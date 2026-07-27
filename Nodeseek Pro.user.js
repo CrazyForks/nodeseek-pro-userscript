@@ -2,7 +2,7 @@
 // @name         Nodeseek Max-iSen
 // @description  增强 NodeSeek/DeepFlood 论坛体验：自动签到、楼中楼、抽奖提醒、下拉加载、快速评论、内容过滤、等级标记、浏览历史、图片预览及响应式设置面板。
 // @namespace    http://www.nodeseek.com/
-// @version      1.0.8-lottery.12
+// @version      1.0.8-lottery.13
 // @homepageURL   https://github.com/EISEN0516/nodeseek-pro-userscript
 // @supportURL    https://github.com/EISEN0516/nodeseek-pro-userscript/issues
 // @updateURL     https://raw.githubusercontent.com/EISEN0516/nodeseek-pro-userscript/main/Nodeseek%20Pro.user.js
@@ -5528,7 +5528,10 @@
                     try {
                         const raw = Number(new URL(luckyUrl).searchParams.get("time"));
                         if (!Number.isFinite(raw) || raw <= 0) return null;
-                        return raw < 1000000000000 ? raw * 1000 : raw;
+                        const timestamp = raw < 1000000000000 ? raw * 1000 : raw;
+                        return timestamp >= Date.UTC(2020, 0, 1) && timestamp < Date.UTC(2101, 0, 1)
+                            ? timestamp
+                            : null;
                     } catch {
                         return null;
                     }
@@ -5547,13 +5550,14 @@
                         || doc.title.replace(/\s*[-|]\s*NodeSeek.*$/i, "").trim()
                         || "抽奖活动";
                     const luckyUrl = extractLuckyUrl(html);
+                    const text = normalizeLotteryText(root?.textContent || "");
                     return {
                         postId,
                         postUrl: firstPageUrl,
                         title,
                         luckyUrl,
-                        drawTime: luckyUrl ? getDrawTime(luckyUrl) : null,
-                        ...extractParticipationRequirements(root?.textContent || "")
+                        drawTime: resolveLotteryDrawTime(luckyUrl, text),
+                        ...extractParticipationRequirements(text)
                     };
                 }
 
@@ -5561,6 +5565,115 @@
                     .replace(/\u00a0/g, " ")
                     .replace(/[ \t]+/g, " ")
                     .replace(/\r/g, "");
+
+                /* LOTTERY_TIME_PARSER_START */
+                function parseLotteryDrawTime(value, now = Date.now()) {
+                    const text = String(value || "")
+                        .replace(/\u00a0/g, " ")
+                        .replace(/(\d)[．。](?=\d)/g, "$1.")
+                        .replace(/[ \t]+/g, " ")
+                        .replace(/\r/g, "");
+                    if (!text) return null;
+
+                    const SHANGHAI_OFFSET = 8 * 60 * 60 * 1000;
+                    const DAY = 24 * 60 * 60 * 1000;
+                    const nowValue = Number.isFinite(Number(now)) ? Number(now) : Date.now();
+                    const shanghaiNow = new Date(nowValue + SHANGHAI_OFFSET);
+                    const currentYear = shanghaiNow.getUTCFullYear();
+                    const currentMonth = shanghaiNow.getUTCMonth() + 1;
+                    const currentDay = shanghaiNow.getUTCDate();
+                    const candidates = [];
+
+                    const buildTimestamp = (year, month, day, hour, minute) => {
+                        if (![year, month, day, hour, minute].every(Number.isInteger)) return null;
+                        if (month < 1 || month > 12 || day < 1 || day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+                            return null;
+                        }
+                        const timestamp = Date.UTC(year, month - 1, day, hour - 8, minute);
+                        const checked = new Date(timestamp + SHANGHAI_OFFSET);
+                        return checked.getUTCFullYear() === year
+                            && checked.getUTCMonth() + 1 === month
+                            && checked.getUTCDate() === day
+                            && checked.getUTCHours() === hour
+                            && checked.getUTCMinutes() === minute
+                            ? timestamp
+                            : null;
+                    };
+
+                    const parseClock = fragment => {
+                        const match = String(fragment || "").match(
+                            /(凌晨|清晨|早上|上午|中午|下午|傍晚|晚上|晚间|晚)?\s*(\d{1,2})\s*(?:(?:[:：])\s*(\d{1,2})|(?:点|时)\s*(半|(?:\d{1,2})\s*分?)?)/
+                        );
+                        if (!match) return null;
+                        const period = match[1] || "";
+                        let hour = Number(match[2]);
+                        let minute = match[3] === undefined
+                            ? (match[4] === "半" ? 30 : Number.parseInt(match[4], 10) || 0)
+                            : Number(match[3]);
+                        if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+                        if (/^(?:下午|傍晚|晚上|晚间|晚)$/.test(period) && hour < 12) hour += 12;
+                        else if (period === "中午" && hour < 11) hour += 12;
+                        else if (/^(?:凌晨|清晨|早上|上午)$/.test(period) && hour === 12) hour = 0;
+                        return { hour, minute, index: match.index || 0 };
+                    };
+
+                    const scoreContext = (index, length) => {
+                        const nearby = text.slice(Math.max(0, index - 18), Math.min(text.length, index + length + 32));
+                        const wider = text.slice(Math.max(0, index - 36), Math.min(text.length, index + length + 56));
+                        let score = 0;
+                        if (/(?:开奖|开出|公布)(?:时间|日期)|(?:时间|日期)[^。；;！？!?\n]{0,8}(?:开奖|开出|公布)/.test(nearby)) score += 8;
+                        if (/(?:开奖|开出|公布)/.test(nearby)) score += 4;
+                        if (/(?:抽奖|截止|结束)(?:时间|日期)?/.test(wider)) score += 2;
+                        if (/(?:不是|并非|非|不(?:是|做|参与)?)[^。；;！？!?\n]{0,4}抽奖/.test(wider)) score = 0;
+                        return score;
+                    };
+
+                    const relativePattern = /(今天|今日|今晚|今夜|明天|明晚|后天)/g;
+                    let match;
+                    while ((match = relativePattern.exec(text))) {
+                        const clock = parseClock(text.slice(match.index, match.index + 32));
+                        const score = scoreContext(match.index, match[0].length);
+                        if (!clock || !score) continue;
+                        const dayOffset = /^(?:明天|明晚)$/.test(match[1]) ? 1 : match[1] === "后天" ? 2 : 0;
+                        const base = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay + dayOffset));
+                        const timestamp = buildTimestamp(
+                            base.getUTCFullYear(),
+                            base.getUTCMonth() + 1,
+                            base.getUTCDate(),
+                            clock.hour,
+                            clock.minute
+                        );
+                        if (timestamp !== null) candidates.push({ timestamp, score: score + 1, index: match.index });
+                    }
+
+                    const datePattern = /(?:(20\d{2})\s*(?:年|[./-])\s*)?(\d{1,2})\s*(?:月|[./-])\s*(\d{1,2})\s*(?:日|号)?/g;
+                    while ((match = datePattern.exec(text))) {
+                        const before = text.slice(Math.max(0, match.index - 20), match.index);
+                        const after = text.slice(match.index + match[0].length, match.index + match[0].length + 36);
+                        const clock = parseClock(after) || parseClock(before);
+                        const score = scoreContext(match.index, match[0].length);
+                        if (!clock || !score) continue;
+                        const explicitYear = !!match[1];
+                        let year = explicitYear ? Number(match[1]) : currentYear;
+                        const month = Number(match[2]);
+                        const day = Number(match[3]);
+                        let timestamp = buildTimestamp(year, month, day, clock.hour, clock.minute);
+                        if (timestamp === null) continue;
+                        if (!explicitYear && timestamp < nowValue - 45 * DAY) {
+                            year += 1;
+                            timestamp = buildTimestamp(year, month, day, clock.hour, clock.minute);
+                        }
+                        if (timestamp !== null) candidates.push({ timestamp, score, index: match.index });
+                    }
+
+                    candidates.sort((left, right) => right.score - left.score || left.index - right.index);
+                    return candidates[0]?.timestamp ?? null;
+                }
+                /* LOTTERY_TIME_PARSER_END */
+
+                function resolveLotteryDrawTime(luckyUrl, text) {
+                    return (luckyUrl ? getDrawTime(luckyUrl) : null) || parseLotteryDrawTime(text);
+                }
 
                 function extractCommentRequirement(value) {
                     const text = normalizeLotteryText(value);
@@ -5637,7 +5750,7 @@
                         postUrl,
                         title,
                         luckyUrl,
-                        drawTime: luckyUrl ? getDrawTime(luckyUrl) : null,
+                        drawTime: resolveLotteryDrawTime(luckyUrl, text),
                         ...requirement
                     };
                 }
