@@ -2,7 +2,7 @@
 // @name         Nodeseek Max-iSen
 // @description  增强 NodeSeek/DeepFlood 论坛体验：自动签到、楼中楼、抽奖提醒、下拉加载、快速评论、内容过滤、等级标记、浏览历史、图片预览及响应式设置面板。
 // @namespace    http://www.nodeseek.com/
-// @version      1.0.8-lottery.15
+// @version      1.0.8-lottery.18
 // @homepageURL   https://github.com/EISEN0516/nodeseek-pro-userscript
 // @supportURL    https://github.com/EISEN0516/nodeseek-pro-userscript/issues
 // @updateURL     https://raw.githubusercontent.com/EISEN0516/nodeseek-pro-userscript/main/Nodeseek%20Pro.user.js
@@ -3518,15 +3518,17 @@
       .nsx-mobile .post-list-item,.nsx-mobile .post-list-content,.nsx-mobile .post-title,.nsx-mobile .post-info{min-width:0!important;max-width:100%}
       .nsx-mobile .post-list-item>.post-list-content{flex:1 1 auto!important;width:auto!important}
       .nsx-mobile .nsk-post-wrapper,.nsx-mobile .comment-container,.nsx-mobile .content-item{min-width:0;max-width:100%}
-      .nsx-mobile .nsk-content-meta-info{display:flex!important;min-width:0;max-width:100%;flex-wrap:wrap;gap:5px}
-      .nsx-mobile .author-info{min-width:0;display:flex;align-items:center;flex:1 1 auto;flex-wrap:wrap}
-      .nsx-mobile .floor-link-wrapper{display:flex;align-items:center;gap:2px;flex:0 1 auto;flex-wrap:wrap;justify-content:flex-end}
-      .nsx-mobile .nsx-nested-children>.content-item>.nsk-content-meta-info{display:grid!important;grid-template-columns:34px minmax(0,1fr);grid-template-areas:"avatar author" "avatar actions";align-items:start!important;column-gap:8px;row-gap:4px}
-      .nsx-mobile .nsx-nested-children>.content-item>.nsk-content-meta-info>.avatar-wrapper{grid-area:avatar;margin-right:0!important}
-      .nsx-mobile .nsx-nested-children>.content-item>.nsk-content-meta-info>.author-info{grid-area:author;width:100%;min-width:0;display:flex!important;align-items:center;flex-wrap:wrap;gap:3px 4px}
-      .nsx-mobile .nsx-nested-children>.content-item>.nsk-content-meta-info>.author-info>.author-name{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .nsx-mobile .nsx-nested-children>.content-item>.nsk-content-meta-info>.floor-link-wrapper{grid-area:actions;width:100%;min-width:0;display:flex!important;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:4px;margin:0!important}
-      .nsx-mobile .nsx-nested-children>.content-item>.nsk-content-meta-info>.floor-link-wrapper .nsx-relation-btn-wrap{max-width:100%;display:flex!important;align-items:center;flex-wrap:wrap;gap:4px!important;margin-left:0!important}
+      .nsx-mobile .nsk-content-meta-info{display:grid!important;grid-template-columns:45px minmax(0,1fr);grid-template-areas:"avatar identity" "avatar actions";align-items:start!important;min-width:0;max-width:100%;column-gap:10px;row-gap:6px}
+      .nsx-mobile .nsk-content-meta-info>.avatar-wrapper{grid-area:avatar;margin-right:0!important}
+      .nsx-mobile .nsk-content-meta-info>:nth-child(2){grid-area:identity;min-width:0;width:100%;max-width:100%;box-sizing:border-box}
+      .nsx-mobile .author-info{min-width:0;width:100%;display:flex!important;align-items:center;flex-wrap:wrap;gap:4px}
+      .nsx-mobile .author-info>*{position:static!important;flex:0 0 auto;max-width:100%}
+      .nsx-mobile .author-info>.author-name{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .nsx-mobile .nsk-content-meta-info>.floor-link-wrapper{grid-area:actions;position:static!important;inset:auto!important;width:100%;min-width:0;max-width:100%;display:flex!important;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:4px;margin:0!important;box-sizing:border-box}
+      .nsx-mobile .nsk-content-meta-info>.floor-link-wrapper>*{position:static!important;flex:0 0 auto!important;max-width:100%}
+      .nsx-mobile .floor-link-wrapper .nsx-relation-btn-wrap{max-width:100%;display:flex!important;align-items:center;flex-wrap:wrap;gap:4px!important;margin-left:0!important}
+      .nsx-mobile .floor-link-wrapper .nsx-relation-btn{position:static!important;flex:0 0 auto!important;min-width:40px!important;height:40px!important;min-height:40px!important;margin:0!important;box-sizing:border-box;justify-content:center;touch-action:manipulation}
+      .nsx-mobile .content-item.nsx-nested-item>.nsk-content-meta-info{display:grid!important;grid-template-columns:34px minmax(0,1fr);grid-template-areas:"avatar identity" "avatar actions"}
       .nsx-mobile .comment-menu{display:flex!important;align-items:center;flex-wrap:wrap;gap:2px}
       .nsx-mobile .comment-menu .menu-item{display:flex!important;align-items:center;justify-content:center;min-width:36px;min-height:36px;margin:0 2px!important;padding:0 3px!important}
       .nsx-mobile .nsx-relation-btn{min-height:34px!important;display:inline-flex!important;align-items:center}
@@ -4180,7 +4182,7 @@
                     .nsx-inline-communication .nsx-btn-telegram{color:#229ed9}
                     .dark-layout .nsx-inline-communication .nsx-communication-btn{background:rgba(255,255,255,.04)}
                     .nsx-mobile .nsx-inline-communication{gap:3px;margin-left:4px}
-                    .nsx-mobile .nsx-inline-communication .nsx-communication-btn{width:36px;min-width:36px;height:36px;min-height:36px;padding:0}
+                    .nsx-mobile .nsx-inline-communication .nsx-communication-btn{width:40px;min-width:40px;height:40px;min-height:40px;padding:0;flex:0 0 auto;position:static!important}
                     .nsx-mobile .nsx-inline-communication .nsx-communication-label{display:none}
                     .nsx-mobile .nsx-inline-communication .nsx-communication-icon-fallback{width:auto;padding:0 4px}
                     .nsx-mobile .nsx-inline-communication .nsx-communication-icon-fallback .nsx-communication-label{display:inline;font-size:10px}

@@ -100,13 +100,22 @@ test('uses touch-sized controls and prevents input auto-zoom', () => {
     assert.match(css, /#nsx-icon-group>\*\{[^}]*min-width:40px!important;[^}]*min-height:40px!important/);
     assert.match(css, /\.nsx-mobile \.nsx-lottery-form-row input:not\(\[type=checkbox\]\)[^}]*font-size:16px!important/);
     assert.match(css, /#nsx-filter-panel button[^}]*min-height:40px!important/);
-    assert.match(source, /\.nsx-mobile \.nsx-inline-communication \.nsx-communication-btn\{width:36px;min-width:36px;height:36px;min-height:36px/);
+    assert.match(source, /\.nsx-mobile \.nsx-inline-communication \.nsx-communication-btn\{width:40px;min-width:40px;height:40px;min-height:40px/);
 });
 
-test('separates nested reply identity and actions on mobile', () => {
-    assert.match(css, /\.nsx-mobile \.nsx-nested-children>\.content-item>\.nsk-content-meta-info\{[^}]*display:grid!important;[^}]*grid-template-columns:34px minmax\(0,1fr\);[^}]*grid-template-areas:"avatar author" "avatar actions"/);
-    assert.match(css, /\.nsx-mobile \.nsx-nested-children>\.content-item>\.nsk-content-meta-info>\.author-info\{[^}]*grid-area:author;[^}]*flex-wrap:wrap/);
-    assert.match(css, /\.nsx-mobile \.nsx-nested-children>\.content-item>\.nsk-content-meta-info>\.floor-link-wrapper\{[^}]*grid-area:actions;[^}]*width:100%;[^}]*justify-content:flex-start/);
+test('separates identity and actions for every mobile post row', () => {
+    assert.match(css, /\.nsx-mobile \.nsk-content-meta-info\{[^}]*display:grid!important;[^}]*grid-template-columns:45px minmax\(0,1fr\);[^}]*grid-template-areas:"avatar identity" "avatar actions"/);
+    assert.match(css, /\.nsx-mobile \.nsk-content-meta-info>:nth-child\(2\)\{[^}]*grid-area:identity;[^}]*min-width:0;[^}]*width:100%/);
+    assert.match(css, /\.nsx-mobile \.nsk-content-meta-info>\.floor-link-wrapper\{[^}]*grid-area:actions;[^}]*width:100%;[^}]*justify-content:flex-start;[^}]*flex-wrap:wrap/);
+    assert.match(css, /\.nsx-mobile \.nsk-content-meta-info>\.floor-link-wrapper\{[^}]*position:static!important;[^}]*inset:auto!important/);
+    assert.match(css, /\.nsx-mobile \.content-item\.nsx-nested-item>\.nsk-content-meta-info\{[^}]*display:grid!important;[^}]*grid-template-columns:34px minmax\(0,1fr\);[^}]*grid-template-areas:"avatar identity" "avatar actions"/);
+});
+
+test('prevents injected mobile controls from shrinking or overlapping', () => {
+    assert.match(css, /\.nsx-mobile \.nsk-content-meta-info>\.floor-link-wrapper>\*\{[^}]*position:static!important;[^}]*flex:0 0 auto!important/);
+    assert.match(css, /\.nsx-mobile \.floor-link-wrapper \.nsx-relation-btn\{[^}]*position:static!important;[^}]*flex:0 0 auto!important;[^}]*min-width:40px!important;[^}]*min-height:40px!important/);
+    assert.match(css, /\.nsx-mobile \.author-info\{[^}]*min-width:0;[^}]*width:100%;[^}]*flex-wrap:wrap/);
+    assert.match(source, /\.nsx-mobile \.nsx-inline-communication \.nsx-communication-btn\{width:40px;min-width:40px;height:40px;min-height:40px;[^}]*flex:0 0 auto;[^}]*position:static!important/);
 });
 
 console.log('mobile responsive behavior: all tests passed');
