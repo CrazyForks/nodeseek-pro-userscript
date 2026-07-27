@@ -2,7 +2,7 @@
 // @name         Nodeseek Max-iSen
 // @description  增强 NodeSeek/DeepFlood 论坛体验：自动签到、楼中楼、抽奖提醒、下拉加载、快速评论、内容过滤、等级标记、浏览历史、图片预览及响应式设置面板。
 // @namespace    http://www.nodeseek.com/
-// @version      1.0.8-lottery.13
+// @version      1.0.8-lottery.14
 // @homepageURL   https://github.com/EISEN0516/nodeseek-pro-userscript
 // @supportURL    https://github.com/EISEN0516/nodeseek-pro-userscript/issues
 // @updateURL     https://raw.githubusercontent.com/EISEN0516/nodeseek-pro-userscript/main/Nodeseek%20Pro.user.js
@@ -5091,6 +5091,65 @@
                 const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => ({
                     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
                 })[char]);
+
+                /* LOTTERY_NOTIFICATION_STATE_START */
+                function notificationRetryDelay(attempts) {
+                    const count = Math.max(1, Number.parseInt(attempts, 10) || 1);
+                    return Math.min(15 * 60 * 1000, 60 * 1000 * (2 ** Math.min(count - 1, 8)));
+                }
+
+                function canAttemptNotification(reminder, stateKey, now = Date.now()) {
+                    if (!reminder || reminder[stateKey + "Notified"]) return false;
+                    const attempts = Math.max(0, Number.parseInt(reminder[stateKey + "NotifyAttempts"], 10) || 0);
+                    const lastAttemptAt = Number(reminder[stateKey + "NotifyLastAttemptAt"]) || 0;
+                    if (!attempts || !lastAttemptAt) return true;
+                    return Number(now) - lastAttemptAt >= notificationRetryDelay(attempts);
+                }
+
+                function summarizeNotificationDelivery(channelNames, results) {
+                    const names = Array.isArray(channelNames) ? channelNames : [];
+                    const values = Array.isArray(results) ? results : [];
+                    const succeeded = [];
+                    const failed = [];
+                    names.forEach((channel, index) => {
+                        const result = values[index];
+                        if (result?.status === "fulfilled") {
+                            succeeded.push(channel);
+                            return;
+                        }
+                        const reason = result?.reason;
+                        failed.push({
+                            channel,
+                            message: String(reason?.message || reason || "发送失败")
+                        });
+                    });
+                    return {
+                        ok: failed.length === 0,
+                        attempted: names.length,
+                        succeeded,
+                        failed
+                    };
+                }
+
+                function recordNotificationDelivery(reminder, stateKey, delivery, now = Date.now()) {
+                    const attemptsKey = stateKey + "NotifyAttempts";
+                    const lastAttemptKey = stateKey + "NotifyLastAttemptAt";
+                    const lastErrorKey = stateKey + "NotifyLastError";
+                    const notifiedKey = stateKey + "Notified";
+                    reminder[attemptsKey] = Math.max(0, Number.parseInt(reminder[attemptsKey], 10) || 0) + 1;
+                    reminder[lastAttemptKey] = Number(now);
+                    reminder[notifiedKey] = !!delivery?.ok;
+                    if (delivery?.ok) {
+                        delete reminder[lastErrorKey];
+                    } else {
+                        reminder[lastErrorKey] = (delivery?.failed || [])
+                            .map(item => item.channel + ": " + item.message)
+                            .join("；") || "通知发送失败";
+                    }
+                    return reminder[notifiedKey];
+                }
+                /* LOTTERY_NOTIFICATION_STATE_END */
+
                 const postIdFromUrl = value => String(value || "").match(/\/post-(\d+)/)?.[1] || null;
                 const canonicalPostUrl = value => {
                     const postId = postIdFromUrl(value);
@@ -5495,21 +5554,34 @@
                         onclick: () => url && GM_openInTab(url, { active: true, insert: true })
                     });
                     const config = getNotifyConfig();
+                    const recipients = String(config.email.to || "").split(",").map(value => value.trim()).filter(Boolean);
+                    const emailReady = recipients.length > 0 && (
+                        config.email.provider === "resend" && config.email.apiKey && config.email.from
+                        || config.email.provider === "mailgun" && config.email.apiKey && config.email.domain && config.email.from
+                        || config.email.provider === "sendgrid" && config.email.apiKey && config.email.from
+                        || config.email.provider === "emailjs" && config.email.serviceId && config.email.templateId && config.email.userId
+                    );
+                    const wechatReady = config.wechat.provider === "pushplus"
+                        ? !!config.wechat.token
+                        : !!config.wechat.sendKey;
                     const jobs = [
-                        ["Telegram", () => sendTelegram(config.telegram, subject, text, url)],
-                        ["邮件", () => sendEmail(config.email, subject, text, url)],
-                        ["微信", () => sendWechat(config.wechat, subject, text, url)],
-                        ["Bark", () => sendBark(config.bark, subject, text, url)],
-                        ["钉钉", () => sendDingtalk(config.dingtalk, subject, text, url)],
-                        ["飞书", () => sendFeishu(config.feishu, subject, text, url)],
-                        ["企业微信", () => sendWecom(config.wecom, subject, text, url)],
-                        ["Discord", () => sendDiscord(config.discord, subject, text, url)]
+                        { label: "Telegram", enabled: !!config.telegram.enabled, ready: !!config.telegram.botToken && !!config.telegram.chatId, run: () => sendTelegram(config.telegram, subject, text, url) },
+                        { label: "邮件", enabled: !!config.email.enabled, ready: !!emailReady, run: () => sendEmail(config.email, subject, text, url) },
+                        { label: "微信", enabled: !!config.wechat.enabled, ready: wechatReady, run: () => sendWechat(config.wechat, subject, text, url) },
+                        { label: "Bark", enabled: !!config.bark.enabled, ready: !!config.bark.key, run: () => sendBark(config.bark, subject, text, url) },
+                        { label: "钉钉", enabled: !!config.dingtalk.enabled, ready: !!config.dingtalk.webhook, run: () => sendDingtalk(config.dingtalk, subject, text, url) },
+                        { label: "飞书", enabled: !!config.feishu.enabled, ready: !!config.feishu.webhook, run: () => sendFeishu(config.feishu, subject, text, url) },
+                        { label: "企业微信", enabled: !!config.wecom.enabled, ready: !!config.wecom.webhook, run: () => sendWecom(config.wecom, subject, text, url) },
+                        { label: "Discord", enabled: !!config.discord.enabled, ready: !!config.discord.webhook, run: () => sendDiscord(config.discord, subject, text, url) }
                     ];
-                    const results = await Promise.allSettled(jobs.map(([, run]) => run()));
+                    const activeJobs = jobs.filter(job => job.enabled);
+                    const results = await Promise.allSettled(activeJobs.map(job => job.ready
+                        ? job.run()
+                        : Promise.reject(new Error(job.label + " 配置不完整"))));
                     results.forEach((result, index) => {
-                        if (result.status === "rejected") ctx.env.warn(jobs[index][0] + " 通知失败", result.reason);
+                        if (result.status === "rejected") ctx.env.warn(activeJobs[index].label + " 通知失败", result.reason);
                     });
-                    return results;
+                    return summarizeNotificationDelivery(activeJobs.map(job => job.label), results);
                 }
 
                 function extractLuckyUrl(html) {
@@ -5937,16 +6009,17 @@
                 }
 
                 async function notifyLotteryResult(reminder, config, html = null) {
-                    if (!config?.enabled || !reminder?.luckyUrl || reminder.resultNotified) return false;
+                    const unchanged = { changed: false, notified: false };
+                    if (!config?.enabled || !reminder?.luckyUrl || reminder.resultNotified) return unchanged;
                     const key = reminder.postUrl || reminder.luckyUrl;
-                    if (resultRequesting.has(key)) return false;
+                    if (resultRequesting.has(key)) return unchanged;
                     resultRequesting.add(key);
                     try {
                         const source = html || String((await gmRequest({ method: "GET", url: reminder.luckyUrl })).responseText || "");
-                        if (!source) return false;
+                        if (!source) return unchanged;
                         const username = resolveAutoResultUsername(config);
                         const result = parseLotteryResult(source, username);
-                        if (!result.ready) return false;
+                        if (!result.ready || !canAttemptNotification(reminder, "result")) return unchanged;
                         const subject = result.myStatus === "won"
                             ? "恭喜中奖！"
                             : result.myStatus === "lost" ? "未中奖" : "抽奖已开奖";
@@ -5955,18 +6028,18 @@
                             : result.myStatus === "lost"
                                 ? "结果：未中奖"
                                 : "结果：已开奖（请在通知配置中填写用户名）";
-                        reminder.resultNotified = true;
                         reminder.resultStatus = result.myStatus;
                         reminder.resultCheckedAt = Date.now();
-                        await sendAllNotifications(
+                        const delivery = await sendAllNotifications(
                             subject,
                             reminder.title + "\n" + statusText + "\n\n中奖名单：\n" + (result.winners.length ? result.winners.join("\n") : "页面未提供中奖名单"),
                             reminder.postUrl || reminder.luckyUrl
                         );
-                        return true;
+                        const notified = recordNotificationDelivery(reminder, "result", delivery);
+                        return { changed: true, notified, delivery };
                     } catch (error) {
                         ctx.env.warn("自动识别抽奖结果失败", error);
-                        return false;
+                        return unchanged;
                     } finally {
                         resultRequesting.delete(key);
                     }
@@ -5988,7 +6061,8 @@
                         }
                     });
                     if (!reminder || Number(reminder.drawTime) > Date.now()) return;
-                    if (await notifyLotteryResult(reminder, auto, document.documentElement.outerHTML)) {
+                    const outcome = await notifyLotteryResult(reminder, auto, document.documentElement.outerHTML);
+                    if (outcome.changed) {
                         saveReminders(reminders);
                         renderList();
                     }
@@ -6007,29 +6081,30 @@
                         const drawTime = Number(reminder.drawTime);
                         if (!Number.isFinite(drawTime) || drawTime <= 0) return;
                         const remaining = drawTime - now;
-                        if (remaining > 0 && remaining <= nearMs && !reminder.nearDrawNotified) {
-                            reminder.nearDrawNotified = true;
-                            changed = true;
+                        if (remaining > 0 && remaining <= nearMs && canAttemptNotification(reminder, "nearDraw", now)) {
                             resultJobs.push(sendAllNotifications(
                                 "抽奖即将开奖",
                                 reminder.title + "\n将在 " + Math.max(1, Math.ceil(remaining / 60000)) + " 分钟内开奖",
                                 reminder.postUrl || reminder.luckyUrl
-                            ));
+                            ).then(delivery => {
+                                recordNotificationDelivery(reminder, "nearDraw", delivery);
+                                changed = true;
+                            }));
                         }
-                        if (remaining <= 0 && !reminder.drawNotified) {
-                            reminder.drawNotified = true;
-                            changed = true;
-                            if (!auto.enabled || !reminder.luckyUrl) {
-                                resultJobs.push(sendAllNotifications(
-                                    "抽奖已开奖",
-                                    reminder.title + "\n已经开奖，请打开抽奖页查看结果",
-                                    reminder.postUrl || reminder.luckyUrl
-                                ));
-                            }
+                        if (remaining <= 0 && (!auto.enabled || !reminder.luckyUrl)
+                            && canAttemptNotification(reminder, "draw", now)) {
+                            resultJobs.push(sendAllNotifications(
+                                "抽奖已开奖",
+                                reminder.title + "\n已经开奖，请打开抽奖页查看结果",
+                                reminder.postUrl || reminder.luckyUrl
+                            ).then(delivery => {
+                                recordNotificationDelivery(reminder, "draw", delivery);
+                                changed = true;
+                            }));
                         }
                         if (remaining <= 0 && auto.enabled && reminder.luckyUrl && !reminder.resultNotified) {
-                            resultJobs.push(notifyLotteryResult(reminder, auto).then(notified => {
-                                if (notified) changed = true;
+                            resultJobs.push(notifyLotteryResult(reminder, auto).then(outcome => {
+                                if (outcome.changed) changed = true;
                             }));
                         }
                     });
@@ -6133,6 +6208,19 @@
                             time.textContent = "未识别到开奖时间";
                         }
                         item.appendChild(time);
+                        if (reminder.resultNotified) {
+                            const deliveryStatus = document.createElement("div");
+                            deliveryStatus.className = "nsx-lottery-delivery-status is-success";
+                            const statusLabels = { won: "已中奖", lost: "未中奖", unknown: "已开奖" };
+                            deliveryStatus.textContent = "开奖结果通知：已发送（" + (statusLabels[reminder.resultStatus] || "已开奖") + "）";
+                            item.appendChild(deliveryStatus);
+                        } else if (reminder.resultNotifyLastError) {
+                            const deliveryStatus = document.createElement("div");
+                            deliveryStatus.className = "nsx-lottery-delivery-status is-error";
+                            deliveryStatus.textContent = "开奖结果通知失败，将自动重试";
+                            deliveryStatus.title = reminder.resultNotifyLastError;
+                            item.appendChild(deliveryStatus);
+                        }
                         list.appendChild(item);
                     });
                 }
@@ -6543,13 +6631,19 @@
                         const testUrl = (ctx.isPost ? canonicalPostUrl(location.href) : null)
                             || testReminder?.postUrl
                             || location.origin + "/";
-                        await sendAllNotifications(
-                            "NodeSeek 抽奖提醒测试",
-                            "通知通道测试\n时间: " + new Date().toLocaleString("zh-CN"),
-                            testUrl
-                        );
-                        test.disabled = false;
-                        statusMessage("success", "测试通知已发送");
+                        try {
+                            const delivery = await sendAllNotifications(
+                                "NodeSeek 抽奖提醒测试",
+                                "通知通道测试\n时间: " + new Date().toLocaleString("zh-CN"),
+                                testUrl
+                            );
+                            if (delivery.ok) statusMessage("success", "测试通知已发送");
+                            else statusMessage("error", "测试通知失败：" + delivery.failed.map(item => item.channel + " - " + item.message).join("；"));
+                        } catch (error) {
+                            statusMessage("error", "测试通知失败：" + String(error?.message || error));
+                        } finally {
+                            test.disabled = false;
+                        }
                     });
                 }
 
