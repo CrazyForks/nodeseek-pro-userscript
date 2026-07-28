@@ -2,7 +2,7 @@
 // @name         Nodeseek Max-iSen
 // @description  增强 NodeSeek/DeepFlood 论坛体验：楼中楼、抽奖提醒、回帖足迹、链接净化、多图床上传、内容过滤、浏览历史及移动端适配。
 // @namespace    http://www.nodeseek.com/
-// @version      1.1.20
+// @version      1.1.21
 // @homepageURL   https://github.com/EISEN0516/nodeseek-pro-userscript
 // @supportURL    https://github.com/EISEN0516/nodeseek-pro-userscript/issues
 // @icon          https://raw.githubusercontent.com/EISEN0516/nodeseek-pro-userscript/main/docs/images/nodeseek-max-isen-icon.png
@@ -1917,6 +1917,8 @@
         border-left:4px solid var(--nsx-cfg-accent)!important;
         background:var(--nsx-cfg-surface)!important;
         box-shadow:none!important;
+        max-width:100vw!important;
+        box-sizing:border-box;
         font-family:"Helvetica Neue",Helvetica,Arial,"PingFang SC","Microsoft YaHei",sans-serif;
         letter-spacing:0!important;
       }
@@ -1962,16 +1964,21 @@
       #nsx-config-menu .layui-menu li{min-height:0;margin:0;background:transparent!important}
       #nsx-config-menu .layui-menu-body-title{padding:0!important}
       #nsx-config-menu .layui-menu a{
-        display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:8px;min-height:46px;
-        padding:7px 15px 7px 17px;border-left:3px solid transparent;color:var(--nsx-cfg-muted);text-decoration:none;
+        display:grid;grid-template-columns:28px 24px minmax(0,1fr) 30px;align-items:center;gap:6px;min-height:46px;
+        padding:7px 12px 7px 17px;border-left:3px solid transparent;color:var(--nsx-cfg-muted);text-decoration:none;
       }
       #nsx-config-menu .layui-menu a:hover{background:var(--nsx-cfg-soft);color:var(--nsx-cfg-ink)}
       #nsx-config-menu .layui-menu-item-checked>a{
         border-left-color:var(--nsx-cfg-accent);background:var(--nsx-cfg-soft);color:var(--nsx-cfg-ink);font-weight:700;
       }
       .nsx-config-menu-index{color:var(--nsx-cfg-accent);font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
+      .nsx-config-menu-emoji{display:inline-flex;align-items:center;justify-content:center;width:24px;font-size:15px;line-height:1}
       .nsx-config-menu-label{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:13px;white-space:nowrap}
-      .nsx-config-menu-count{color:var(--nsx-cfg-muted);font-size:10px;font-variant-numeric:tabular-nums}
+      .nsx-config-menu-count{
+        display:inline-flex;align-items:center;justify-content:center;justify-self:center;width:28px;height:22px;overflow:hidden;
+        border:1px solid var(--nsx-cfg-line);border-radius:4px;background:var(--nsx-cfg-surface);color:var(--nsx-cfg-muted);
+        font-size:10px;line-height:1;font-variant-numeric:tabular-nums;
+      }
       .nsx-config-workspace{display:flex;flex:1 1 auto;min-width:0;min-height:0;flex-direction:column;background:var(--nsx-cfg-soft)}
       #nsx-config-content{
         flex:1 1 auto;min-width:0;height:auto;overflow-y:auto;padding:0 24px 36px;background:var(--nsx-cfg-soft);
@@ -1983,7 +1990,8 @@
         padding:18px 0 12px;border-bottom:1px solid var(--nsx-cfg-line);
       }
       .nsx-config-section-index{color:var(--nsx-cfg-accent);font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
-      .nsx-config-section-title{margin:0;color:var(--nsx-cfg-ink);font-size:19px;line-height:1.25}
+      .nsx-config-section-title{display:flex;align-items:center;gap:8px;margin:0;color:var(--nsx-cfg-ink);font-size:19px;line-height:1.25}
+      .nsx-config-section-emoji{display:inline-flex;align-items:center;justify-content:center;width:24px;font-size:19px;line-height:1}
       .nsx-config-section-meta{margin:4px 0 0;color:var(--nsx-cfg-muted);font-size:11px}
       .nsx-config-section-list{background:var(--nsx-cfg-surface)}
       .nsx-config-card{
@@ -2052,8 +2060,9 @@
         #nsx-config-menu .layui-menu{display:flex;gap:0;overflow-x:auto;padding:0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
         #nsx-config-menu .layui-menu::-webkit-scrollbar{display:none}
         #nsx-config-menu .layui-menu li{flex:0 0 auto}
-        #nsx-config-menu .layui-menu a{grid-template-columns:auto auto;gap:6px;min-height:46px;padding:8px 13px;border-left:0;border-bottom:3px solid transparent}
+        #nsx-config-menu .layui-menu a{grid-template-columns:auto 20px auto;gap:6px;min-height:46px;padding:8px 13px;border-left:0;border-bottom:3px solid transparent}
         #nsx-config-menu .layui-menu-item-checked>a{border-bottom-color:var(--nsx-cfg-accent)}
+        .nsx-config-menu-emoji{width:20px;font-size:14px}
         .nsx-config-menu-count{display:none}
         .nsx-config-workspace{min-height:0}
         #nsx-config-content{padding:0 12px 28px;-webkit-overflow-scrolling:touch}
@@ -2408,6 +2417,19 @@
                 });
 
                 const cleanUiLabel = value => String(value || "").replace(/^[^A-Za-z0-9\u3400-\u9fff]+/, "").trim();
+                const categoryEmoji = Object.freeze({
+                    "隐私与规则": "🔒",
+                    "基础功能": "⚙️",
+                    "视觉美化": "🎨",
+                    "辅助工具": "🧰",
+                    "帖子阅读": "📖",
+                    "过滤设置": "🚫",
+                    "社交关系": "🤝",
+                    "NodeSeek抽奖": "🎁",
+                    "配置备份": "💾",
+                    "其他设置": "⚙️"
+                });
+                const emojiForCategory = label => categoryEmoji[label] || "⚙️";
                 const sectionIndex = index => String(index + 1).padStart(2, "0");
                 const cont = document.createElement("div");
                 cont.id = "nsx-config-shell";
@@ -2539,7 +2561,9 @@
                     const sectionHeader = el("header", "nsx-config-section-header", fs);
                     const sectionNumber = el("span", "nsx-config-section-index", sectionHeader); sectionNumber.textContent = sectionIndex(i);
                     const sectionCopy = el("div", "", sectionHeader);
-                    const sectionTitle = el("h2", "nsx-config-section-title", sectionCopy); sectionTitle.textContent = label;
+                    const sectionTitle = el("h2", "nsx-config-section-title", sectionCopy);
+                    const sectionEmoji = el("span", "nsx-config-section-emoji", sectionTitle); sectionEmoji.textContent = emojiForCategory(label); sectionEmoji.setAttribute("aria-hidden", "true");
+                    const sectionLabel = el("span", "", sectionTitle); sectionLabel.textContent = label;
                     const sectionMeta = el("p", "nsx-config-section-meta", sectionCopy); sectionMeta.textContent = `${list.length} 个模块`;
                     const fd = el("div", "layui-form nsx-config-section-list", fs);
                     list.forEach(e => { const c = makeCard(e, code); if (c) fd.appendChild(c); });
@@ -2547,6 +2571,7 @@
                     mi.dataset.nsxMenuGroup = `group-${i}`;
                     const mb = el("div", "layui-menu-body-title", mi), a = el("a", "", mb); a.href = `#group-${i}`;
                     const menuNumber = el("span", "nsx-config-menu-index", a); menuNumber.textContent = sectionIndex(i);
+                    const menuEmoji = el("span", "nsx-config-menu-emoji", a); menuEmoji.textContent = emojiForCategory(label); menuEmoji.setAttribute("aria-hidden", "true");
                     const menuLabel = el("span", "nsx-config-menu-label", a); menuLabel.textContent = label;
                     const menuCount = el("small", "nsx-config-menu-count", a); menuCount.textContent = String(list.length);
                 });
@@ -2556,7 +2581,9 @@
                 const backupSectionHeader = el("header", "nsx-config-section-header", backupFs);
                 const backupSectionNumber = el("span", "nsx-config-section-index", backupSectionHeader); backupSectionNumber.textContent = sectionIndex(backupIdx);
                 const backupSectionCopy = el("div", "", backupSectionHeader);
-                const backupSectionTitle = el("h2", "nsx-config-section-title", backupSectionCopy); backupSectionTitle.textContent = "配置备份";
+                const backupSectionTitle = el("h2", "nsx-config-section-title", backupSectionCopy);
+                const backupSectionEmoji = el("span", "nsx-config-section-emoji", backupSectionTitle); backupSectionEmoji.textContent = emojiForCategory("配置备份"); backupSectionEmoji.setAttribute("aria-hidden", "true");
+                const backupSectionLabel = el("span", "", backupSectionTitle); backupSectionLabel.textContent = "配置备份";
                 const backupSectionMeta = el("p", "nsx-config-section-meta", backupSectionCopy); backupSectionMeta.textContent = "导出或还原本地设置";
                 const backupWrap = el("div", "layui-form nsx-config-section-list", backupFs);
                 const backupCard = el("section", "layui-form nsx-config-card", backupWrap);
@@ -2568,6 +2595,7 @@
                 backupA.href = `#group-${backupIdx}`;
                 backupMi.dataset.nsxMenuGroup = `group-${backupIdx}`;
                 const backupMenuNumber = el("span", "nsx-config-menu-index", backupA); backupMenuNumber.textContent = sectionIndex(backupIdx);
+                const backupMenuEmoji = el("span", "nsx-config-menu-emoji", backupA); backupMenuEmoji.textContent = emojiForCategory("配置备份"); backupMenuEmoji.setAttribute("aria-hidden", "true");
                 const backupMenuLabel = el("span", "nsx-config-menu-label", backupA); backupMenuLabel.textContent = "配置备份";
                 const backupMenuCount = el("small", "nsx-config-menu-count", backupA); backupMenuCount.textContent = "1";
 
@@ -2660,13 +2688,13 @@
             };
 
             const menuItems = [
-                { name: "advanced_settings", cb: advSettings, text: "打开设置", states: [] },
-                { name: "sign_in", cb: switchState, text: "签到方式", states: [{ s2: "关闭" }, { s2: "随机鸡腿" }, { s2: "5 个鸡腿" }] },
-                { name: "re_sign", cb: reSign, text: "立即重试签到", states: [] },
-                { name: "open_post_in_new_tab", cb: switchNewTab, text: "新标签打开", states: [{ s2: "关闭" }, { s2: "开启" }] },
-                { name: "export_config", cb: exportConfig, text: "导出配置", states: [] },
-                { name: "import_config", cb: importConfig, text: "还原配置", states: [], autoClose: false },
-                { name: "feedback", cb: () => GM_openInTab("https://greasyfork.org/zh-CN/scripts/588182/feedback", { active: true, insert: true, setParent: true }), text: "问题反馈", states: [] }
+                { name: "advanced_settings", cb: advSettings, text: "⚙️ 全局设置", states: [] },
+                { name: "sign_in", cb: switchState, text: "🍗 签到方式", states: [{ s2: "关闭" }, { s2: "随机鸡腿" }, { s2: "5 个鸡腿" }] },
+                { name: "re_sign", cb: reSign, text: "🔄 立即重试签到", states: [] },
+                { name: "open_post_in_new_tab", cb: switchNewTab, text: "↗️ 新标签打开", states: [{ s2: "关闭" }, { s2: "开启" }] },
+                { name: "export_config", cb: exportConfig, text: "📤 导出配置", states: [] },
+                { name: "import_config", cb: importConfig, text: "📥 还原配置", states: [], autoClose: false },
+                { name: "feedback", cb: () => GM_openInTab("https://greasyfork.org/zh-CN/scripts/588182/feedback", { active: true, insert: true, setParent: true }), text: "💬 问题反馈", states: [] }
             ];
 
             regMenus();
@@ -7852,8 +7880,8 @@
 
                 function registerMenus() {
                     menuIds = [
-                        GM_registerMenuCommand("抽奖提醒", openPanel),
-                        GM_registerMenuCommand("抽奖通知设置", openNotifyConfig)
+                        GM_registerMenuCommand("🎁 抽奖提醒", openPanel),
+                        GM_registerMenuCommand("🔔 抽奖通知设置", openNotifyConfig)
                     ].filter(Boolean);
                 }
 

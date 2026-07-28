@@ -113,12 +113,12 @@
       <a id="tracked-link" href="https://example.com/path?utm_source=forum&amp;keep=1">外部链接</a>
       <a id="jump-link">论坛跳板</a>
     </article>
-    <button id="open-settings" type="button">打开设置</button>
+    <button id="open-settings" type="button">全局设置</button>
   </main>
   <script>
     document.getElementById("jump-link").href = `${location.origin}/jump?to=${encodeURIComponent("https://example.org/target?utm_campaign=test&ok=1")}`;
     document.getElementById("open-settings").addEventListener("click", () => {
-      window.__menuCommands.find(command => command.label.includes("打开设置"))?.callback();
+      window.__menuCommands.find(command => command.label.includes("全局设置"))?.callback();
     });
   </script>
   <script src="/Nodeseek%20Pro.user.js"></script>
