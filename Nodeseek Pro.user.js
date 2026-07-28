@@ -2,9 +2,10 @@
 // @name         Nodeseek Max-iSen
 // @description  增强 NodeSeek/DeepFlood 论坛体验：楼中楼、抽奖提醒、回帖足迹、链接净化、多图床上传、内容过滤、浏览历史及移动端适配。
 // @namespace    http://www.nodeseek.com/
-// @version      1.0.8-lottery.19
+// @version      1.0.8-lottery.20
 // @homepageURL   https://github.com/EISEN0516/nodeseek-pro-userscript
 // @supportURL    https://github.com/EISEN0516/nodeseek-pro-userscript/issues
+// @icon          https://raw.githubusercontent.com/EISEN0516/nodeseek-pro-userscript/main/docs/images/nodeseek-max-isen-icon.png
 // @updateURL     https://raw.githubusercontent.com/EISEN0516/nodeseek-pro-userscript/main/Nodeseek%20Pro.user.js
 // @downloadURL   https://raw.githubusercontent.com/EISEN0516/nodeseek-pro-userscript/main/Nodeseek%20Pro.user.js
 // @match        *://www.nodeseek.com/*
@@ -1905,7 +1906,170 @@
        ========================================================================== */
     // 菜单系统（油猴菜单 + 高级设置面板）
 
-    const CSS$1 = `#nsx-config-menu{height:100%;overflow-y:visible;border-right:1px solid #eee}#nsx-config-content{height:100%;overflow-y:auto;padding:0 15px;background:#f8f8f8}.nsx-config-card{margin-bottom:20px}.nsx-config-card .layui-card-header{display:flex;align-items:center;justify-content:space-between;font-weight:700}.nsx-config-card .header-checkbox{position:absolute;right:15px;top:50%;transform:translateY(-50%)}.nsx-config-card .layui-form-switch{margin-top:0!important}.nsx-config-card .layui-card-body:empty{padding-top:0;padding-bottom:0}.nsx-config-card .layui-form-label{width:110px!important;padding:9px 10px!important}.nsx-config-card .layui-input-block{margin-left:140px!important}.nsx-config-tools{display:flex;gap:10px;flex-wrap:wrap}.nsx-config-tools .layui-btn{min-width:120px}.nsx-config-tools-tip{margin-top:10px;font-size:12px;color:#888;line-height:1.6}.dark-layout #nsx-config-menu{border-right-color:#3a3a3a}.dark-layout #nsx-config-content{background:#1e1e1e}.dark-layout .nsx-config-tools-tip{color:#999}`;
+    const CSS$1 = `
+      #setting-layer-direction-r{
+        --nsx-cfg-accent:#ff4f00;
+        --nsx-cfg-ink:#111111;
+        --nsx-cfg-muted:#666b73;
+        --nsx-cfg-line:#dedfe2;
+        --nsx-cfg-soft:#f7f7f8;
+        --nsx-cfg-surface:#ffffff;
+        border-left:4px solid var(--nsx-cfg-accent)!important;
+        background:var(--nsx-cfg-surface)!important;
+        box-shadow:none!important;
+        font-family:"Helvetica Neue",Helvetica,Arial,"PingFang SC","Microsoft YaHei",sans-serif;
+        letter-spacing:0!important;
+      }
+      #setting-layer-direction-r *{box-sizing:border-box;letter-spacing:0!important}
+      #setting-layer-direction-r .layui-layer-title{
+        height:64px;line-height:64px;padding:0 62px 0 24px;border-bottom:1px solid var(--nsx-cfg-line);
+        background:var(--nsx-cfg-surface);color:var(--nsx-cfg-ink);font-size:20px;font-weight:700;
+      }
+      #setting-layer-direction-r .layui-layer-setwin{top:12px;right:12px;width:40px;height:40px}
+      #setting-layer-direction-r .layui-layer-setwin .layui-layer-close{
+        position:relative!important;inset:auto!important;display:block;width:40px!important;height:40px!important;margin:0!important;background:none!important;
+      }
+      #setting-layer-direction-r .layui-layer-setwin .layui-layer-close::before,
+      #setting-layer-direction-r .layui-layer-setwin .layui-layer-close::after{
+        position:absolute;top:19px;left:10px;width:20px;height:1px;background:var(--nsx-cfg-ink);content:"";transform:rotate(45deg);
+      }
+      #setting-layer-direction-r .layui-layer-setwin .layui-layer-close::after{transform:rotate(-45deg)}
+      #setting-layer-direction-r .layui-layer-content{background:var(--nsx-cfg-surface)}
+      #setting-layer-direction-r .layui-layer-btn{
+        height:64px;padding:11px 20px;border-top:1px solid var(--nsx-cfg-line);background:var(--nsx-cfg-surface);
+      }
+      #setting-layer-direction-r .layui-layer-btn a{
+        min-width:96px;height:40px;line-height:38px;margin:0 0 0 8px;border:1px solid var(--nsx-cfg-ink);
+        border-radius:4px;background:var(--nsx-cfg-surface);color:var(--nsx-cfg-ink);font-size:14px;font-weight:600;
+      }
+      #setting-layer-direction-r .layui-layer-btn .layui-layer-btn0{
+        border-color:var(--nsx-cfg-accent);background:var(--nsx-cfg-accent);color:#fff;
+      }
+      #nsx-config-shell{display:flex;height:100%;min-height:0;background:var(--nsx-cfg-surface);color:var(--nsx-cfg-ink)}
+      #nsx-config-menu{
+        width:210px;min-width:210px;height:100%;overflow-y:auto;border:0;border-right:1px solid var(--nsx-cfg-line);
+        background:var(--nsx-cfg-surface);scrollbar-width:thin;
+      }
+      .nsx-config-brand{display:flex;align-items:center;gap:11px;min-height:82px;padding:16px 18px;border-bottom:1px solid var(--nsx-cfg-line)}
+      .nsx-config-brand-mark{
+        display:flex;align-items:center;justify-content:center;width:42px;height:42px;flex:0 0 42px;
+        border-left:5px solid var(--nsx-cfg-ink);background:var(--nsx-cfg-soft);color:var(--nsx-cfg-ink);font-size:24px;font-weight:700;
+      }
+      .nsx-config-brand-copy{min-width:0;line-height:1.2}
+      .nsx-config-brand-copy strong{display:block;overflow:hidden;text-overflow:ellipsis;color:var(--nsx-cfg-ink);font-size:15px;white-space:nowrap}
+      .nsx-config-brand-copy small{display:block;margin-top:5px;color:var(--nsx-cfg-muted);font-size:11px;font-variant-numeric:tabular-nums}
+      #nsx-config-menu .layui-menu{padding:10px 0;background:transparent;border:0}
+      #nsx-config-menu .layui-menu li{min-height:0;margin:0;background:transparent!important}
+      #nsx-config-menu .layui-menu-body-title{padding:0!important}
+      #nsx-config-menu .layui-menu a{
+        display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:8px;min-height:46px;
+        padding:7px 15px 7px 17px;border-left:3px solid transparent;color:var(--nsx-cfg-muted);text-decoration:none;
+      }
+      #nsx-config-menu .layui-menu a:hover{background:var(--nsx-cfg-soft);color:var(--nsx-cfg-ink)}
+      #nsx-config-menu .layui-menu-item-checked>a{
+        border-left-color:var(--nsx-cfg-accent);background:var(--nsx-cfg-soft);color:var(--nsx-cfg-ink);font-weight:700;
+      }
+      .nsx-config-menu-index{color:var(--nsx-cfg-accent);font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
+      .nsx-config-menu-label{min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:13px;white-space:nowrap}
+      .nsx-config-menu-count{color:var(--nsx-cfg-muted);font-size:10px;font-variant-numeric:tabular-nums}
+      .nsx-config-workspace{display:flex;flex:1 1 auto;min-width:0;min-height:0;flex-direction:column;background:var(--nsx-cfg-soft)}
+      #nsx-config-content{
+        flex:1 1 auto;min-width:0;height:auto;overflow-y:auto;padding:0 24px 36px;background:var(--nsx-cfg-soft);
+        scroll-behavior:smooth;scrollbar-width:thin;
+      }
+      .nsx-config-section{margin:0;padding:0;border:0;scroll-margin-top:16px}
+      .nsx-config-section-header{
+        display:grid;grid-template-columns:42px minmax(0,1fr);align-items:center;gap:10px;min-height:84px;
+        padding:18px 0 12px;border-bottom:1px solid var(--nsx-cfg-line);
+      }
+      .nsx-config-section-index{color:var(--nsx-cfg-accent);font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+      .nsx-config-section-title{margin:0;color:var(--nsx-cfg-ink);font-size:19px;line-height:1.25}
+      .nsx-config-section-meta{margin:4px 0 0;color:var(--nsx-cfg-muted);font-size:11px}
+      .nsx-config-section-list{background:var(--nsx-cfg-surface)}
+      .nsx-config-card{
+        display:block;margin:0;border:0;border-bottom:1px solid var(--nsx-cfg-line);border-radius:0;background:var(--nsx-cfg-surface);box-shadow:none;
+      }
+      .nsx-config-card-header{
+        display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px;min-height:58px;
+        padding:12px 16px;color:var(--nsx-cfg-ink);font-size:14px;font-weight:700;line-height:1.45;
+      }
+      .nsx-config-card-header .header-checkbox{position:static;align-self:center;justify-self:end;transform:none}
+      .nsx-config-card .layui-form-switch{margin-top:0!important;border-color:#bfc1c5;background:#bfc1c5}
+      .nsx-config-card .layui-form-onswitch{border-color:var(--nsx-cfg-accent)!important;background:var(--nsx-cfg-accent)!important}
+      .nsx-config-card .layui-form-radio:hover>*,.nsx-config-card .layui-form-radioed>*{color:var(--nsx-cfg-accent)!important}
+      .nsx-config-card-body{
+        display:grid!important;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px 18px;
+        padding:4px 16px 16px!important;border-top:1px solid #efeff1;
+      }
+      .nsx-config-card-body:empty{display:none!important;padding:0!important;border:0}
+      .nsx-config-card-body>[class*="layui-col-md"]{float:none!important;width:auto!important;padding:0!important}
+      .nsx-config-card-body>.layui-col-md12{grid-column:span 12}.nsx-config-card-body>.layui-col-md6{grid-column:span 6}
+      .nsx-config-card-body>.layui-col-md4{grid-column:span 4}.nsx-config-card-body>.layui-col-md3{grid-column:span 3}
+      .nsx-config-card .layui-form-item{
+        display:grid;grid-template-columns:minmax(112px,38%) minmax(0,1fr);align-items:center;gap:12px;
+        min-width:0;margin:0;padding-top:12px;
+      }
+      .nsx-config-card .layui-form-label{
+        float:none!important;width:auto!important;min-width:0;padding:0!important;color:var(--nsx-cfg-muted);
+        font-size:12px;line-height:1.45;text-align:left!important;overflow-wrap:anywhere;
+      }
+      .nsx-config-card .layui-input-block{min-width:0;min-height:0;margin-left:0!important}
+      .nsx-config-card .layui-input,.nsx-config-card .layui-textarea,.nsx-config-card select{
+        width:100%;border-color:#cfd1d5;border-radius:4px;background:var(--nsx-cfg-surface);color:var(--nsx-cfg-ink);font-size:13px;
+      }
+      .nsx-config-card .layui-input:focus,.nsx-config-card .layui-textarea:focus{border-color:var(--nsx-cfg-accent)!important}
+      .nsx-config-card .layui-textarea{min-height:92px;resize:vertical}
+      .nsx-config-card .layui-btn{height:36px;line-height:34px;border-radius:4px;font-size:13px}
+      .nsx-config-card .layui-btn-normal{border-color:var(--nsx-cfg-accent);background:var(--nsx-cfg-accent)}
+      .nsx-config-card .layui-btn-primary{border-color:var(--nsx-cfg-ink);background:var(--nsx-cfg-surface);color:var(--nsx-cfg-ink)}
+      .nsx-config-card .layui-disabled{opacity:.45}
+      .nsx-config-tools{display:flex;gap:10px;flex-wrap:wrap}
+      .nsx-config-tools .layui-btn{min-width:112px;margin:0}
+      .nsx-config-tools-tip{max-width:620px;margin-top:10px;color:var(--nsx-cfg-muted);font-size:12px;line-height:1.65}
+      .nsx-config-backup-body{display:block!important}
+      .nsx-config-end{padding:28px 0 4px;color:var(--nsx-cfg-muted);font-size:11px;text-align:center}
+      .dark-layout #setting-layer-direction-r{
+        --nsx-cfg-ink:#f5f5f5;--nsx-cfg-muted:#aaadb3;--nsx-cfg-line:#35363a;--nsx-cfg-soft:#161719;--nsx-cfg-surface:#0f1011;
+      }
+      .dark-layout #setting-layer-direction-r .nsx-config-card-body{border-top-color:#242529}
+      .dark-layout #setting-layer-direction-r .nsx-config-card .layui-input,
+      .dark-layout #setting-layer-direction-r .nsx-config-card .layui-textarea,
+      .dark-layout #setting-layer-direction-r .nsx-config-card select{border-color:#4a4c52}
+      @media(max-width:900px){
+        #nsx-config-menu{width:188px;min-width:188px}
+        #nsx-config-content{padding-left:18px;padding-right:18px}
+        .nsx-config-card-body>.layui-col-md6,.nsx-config-card-body>.layui-col-md4,.nsx-config-card-body>.layui-col-md3{grid-column:span 12}
+      }
+      @media(max-width:720px){
+        #setting-layer-direction-r{right:0!important;width:100vw!important;max-width:100vw!important;height:100vh!important;height:100dvh!important;border-left:0!important;border-top:4px solid var(--nsx-cfg-accent)!important;box-sizing:border-box}
+        #setting-layer-direction-r .layui-layer-title{height:56px;line-height:56px;padding-left:16px;font-size:18px}
+        #setting-layer-direction-r .layui-layer-setwin{top:8px;right:8px}
+        #setting-layer-direction-r .layui-layer-btn{height:64px;padding:10px 12px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
+        #setting-layer-direction-r .layui-layer-btn a{min-width:88px;min-height:42px;line-height:40px}
+        #nsx-config-shell{flex-direction:column}
+        #nsx-config-menu{width:100%;min-width:0;height:auto;max-height:none;overflow:visible;border-right:0;border-bottom:1px solid var(--nsx-cfg-line)}
+        .nsx-config-brand{display:none}
+        #nsx-config-menu .layui-menu{display:flex;gap:0;overflow-x:auto;padding:0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+        #nsx-config-menu .layui-menu::-webkit-scrollbar{display:none}
+        #nsx-config-menu .layui-menu li{flex:0 0 auto}
+        #nsx-config-menu .layui-menu a{grid-template-columns:auto auto;gap:6px;min-height:46px;padding:8px 13px;border-left:0;border-bottom:3px solid transparent}
+        #nsx-config-menu .layui-menu-item-checked>a{border-bottom-color:var(--nsx-cfg-accent)}
+        .nsx-config-menu-count{display:none}
+        .nsx-config-workspace{min-height:0}
+        #nsx-config-content{padding:0 12px 28px;-webkit-overflow-scrolling:touch}
+        .nsx-config-section-header{grid-template-columns:36px minmax(0,1fr);min-height:70px;padding:14px 0 10px}
+        .nsx-config-section-index{font-size:20px}
+        .nsx-config-section-title{font-size:17px}
+        .nsx-config-card-header{min-height:56px;padding:10px 12px;font-size:14px}
+        .nsx-config-card-body{grid-template-columns:1fr;gap:10px;padding:2px 12px 14px!important}
+        .nsx-config-card-body>[class*="layui-col-md"]{grid-column:1!important}
+        .nsx-config-card .layui-form-item{grid-template-columns:1fr;gap:6px;padding-top:10px}
+        .nsx-config-card .layui-input,.nsx-config-card .layui-textarea,.nsx-config-card select{min-height:44px;font-size:16px!important}
+        .nsx-config-card .layui-form-label{font-size:12px}
+        .nsx-config-card .layui-form-switch{min-height:30px}
+        .nsx-config-tools .layui-btn{min-width:0;min-height:42px;flex:1 1 120px}
+      }
+    `;
 
     const el = (t, c, p, s) => { const e = document.createElement(t); if (c) e.className = c; if (s) e.style.cssText = s; if (p) p.appendChild(e); return e; };
     const BACKUP_SCHEMA_VERSION = 2;
@@ -2062,7 +2226,7 @@
         init(ctx) {
             const uw = ctx.uw, code = ctx.site?.code || "ns";
             const ids = [];
-            const txt = (m, v) => `${m.text}: ${m.states[v].s1} ${m.states[v].s2}`;
+            const txt = (m, v) => `${m.text} · ${m.states[v].s2}`;
 
 
             const regMenus = () => {
@@ -2243,13 +2407,20 @@
                     groups[g].push(e);
                 });
 
+                const cleanUiLabel = value => String(value || "").replace(/^[^A-Za-z0-9\u3400-\u9fff]+/, "").trim();
+                const sectionIndex = index => String(index + 1).padStart(2, "0");
                 const cont = document.createElement("div");
-                cont.className = "layui-row";
-                cont.style.cssText = "display:flex;height:100%";
-                const menuDiv = el("div", "layui-panel layui-col-xs3", cont);
+                cont.id = "nsx-config-shell";
+                const menuDiv = el("aside", "", cont);
                 menuDiv.id = "nsx-config-menu";
+                const brand = el("div", "nsx-config-brand", menuDiv);
+                const brandMark = el("span", "nsx-config-brand-mark", brand); brandMark.textContent = "M";
+                const brandCopy = el("span", "nsx-config-brand-copy", brand);
+                const brandName = el("strong", "", brandCopy); brandName.textContent = "Max-iSen";
+                const brandVersion = el("small", "", brandCopy); brandVersion.textContent = `v${info.version || ""}`;
                 const menuList = el("ul", "layui-menu", menuDiv);
-                const wrapper = el("div", "layui-col-xs9", cont);
+                const workspace = el("main", "nsx-config-workspace", cont);
+                const wrapper = el("div", "", workspace);
                 wrapper.id = "nsx-config-content";
 
                 const isObj = v => v && typeof v === "object" && !Array.isArray(v);
@@ -2258,7 +2429,7 @@
 
                 const makeField = (f, path, val, defaultCol = 12) => {
                     const col = f.col ?? defaultCol;
-                    const w = el("div", `layui-col-md${col}`), item = el("div", "layui-form-item", w);
+                    const w = el("div", `layui-col-md${col} nsx-config-field`), item = el("div", "layui-form-item nsx-config-field-item", w);
                     const lbl = el("label", "layui-form-label", item); lbl.textContent = f.label || f.key;
                     if (f.desc) {
                         const help = el("span", "layui-icon layui-icon-help", lbl);
@@ -2268,9 +2439,7 @@
                     const blk = el("div", "layui-input-block", item);
 
                     if (f.type === "SWITCH") {
-                        item.style.cssText = "display:flex;align-items:center;margin-bottom:15px;";
-                        lbl.style.cssText = "float:none;display:inline-block;padding:0 15px 0 0;width:auto;text-align:left;line-height:normal;";
-                        blk.style.cssText = "margin-left:0;min-height:auto;";
+                        item.classList.add("nsx-config-field-switch");
                         let inp = el("input", "", blk); inp.type = "checkbox"; if (val) inp.setAttribute("checked", ""); inp.setAttribute("lay-skin", "switch"); inp.setAttribute("lay-text", "开启|关闭"); inp.name = path;
                     }
                     else if (f.type === "TEXTAREA") { let inp = el("textarea", "layui-textarea", blk); inp.setAttribute("placeholder", f.placeholder || ""); inp.textContent = Array.isArray(val) ? val.join("\n") : (val ?? ""); inp.name = path; }
@@ -2317,7 +2486,9 @@
                     }
                     else {
                         let inp = el("input", "layui-input", blk);
-                        inp.type = f.type === "NUMBER" ? "number" : "text";
+                        const sensitive = /(api[_-]?key|token|secret|password|webhook)/i.test(path);
+                        inp.type = f.type === "NUMBER" ? "number" : sensitive ? "password" : "text";
+                        if (sensitive) inp.autocomplete = "off";
                         inp.setAttribute("value", val ?? "");
                         inp.setAttribute("name", path);
                         inp.dataset.valueType = f.valueType || "";
@@ -2333,16 +2504,16 @@
                     let base = entry.key, cfg = defs[entry.key];
                     if (entry.key === "sign_in") { cfg = defs.sign_in?.[siteCode] || defs.sign_in?.ns || {}; base = `sign_in.${siteCode}`; }
                     if (!isObj(cfg)) return null;
-                    const card = el("div", "layui-card layui-form nsx-config-card");
+                    const card = el("section", "layui-form nsx-config-card");
                     card.setAttribute("lay-filter", `nsx-${entry.key}`);
-                    const hdr = el("div", "layui-card-header", card); hdr.textContent = m.label || entry.key;
+                    const hdr = el("div", "nsx-config-card-header", card); hdr.textContent = m.label || entry.key;
                     if (typeof cfg.enabled === "boolean") {
                         const cbW = el("div", "header-checkbox", hdr), cb = el("input", "", cbW);
                         cb.type = "checkbox"; cb.name = `${base}.enabled`; if (store.get(`${base}.enabled`, cfg.enabled)) cb.setAttribute("checked", "");
                         cb.setAttribute("lay-skin", "switch"); cb.setAttribute("lay-text", "开启|关闭");
                         cb.setAttribute("lay-filter", "nsx-main-switch");
                     }
-                    const body = el("div", "layui-card-body layui-row layui-col-space10", card);
+                    const body = el("div", "nsx-config-card-body layui-row", card);
                     const fields = m.fields || {}, hidden = new Set(m.hidden || []);
                     const cols = m.cols || 1, defaultCol = Math.floor(12 / cols);
                     Object.keys(cfg).filter(k => k !== "enabled" && !isObj(cfg[k]) && !hidden.has(k)).forEach(k => {
@@ -2353,7 +2524,9 @@
                         if (k === 'blacklist_mode' && cur === 'hide') cur = 'official';
 
                         const fe = makeField(f, `${base}.${k}`, cur, defaultCol);
-                        if (fe) body.appendChild(fe);
+                        if (fe) {
+                            body.appendChild(fe);
+                        }
                     });
                     return card;
                 };
@@ -2361,36 +2534,49 @@
                 // 按照排好序的分组进行渲染
                 groupOrder.forEach((g, i) => {
                     const list = groups[g];
-                    const fs = el("fieldset", "layui-elem-field layui-field-title", wrapper); fs.id = `group-${i}`;
-                    const lg = el("legend", "", fs); lg.textContent = g;
-                    const fd = el("div", "layui-form", wrapper);
+                    const label = cleanUiLabel(g) || "其他设置";
+                    const fs = el("section", "nsx-config-section", wrapper); fs.id = `group-${i}`; fs.dataset.nsxGroup = label.toLowerCase();
+                    const sectionHeader = el("header", "nsx-config-section-header", fs);
+                    const sectionNumber = el("span", "nsx-config-section-index", sectionHeader); sectionNumber.textContent = sectionIndex(i);
+                    const sectionCopy = el("div", "", sectionHeader);
+                    const sectionTitle = el("h2", "nsx-config-section-title", sectionCopy); sectionTitle.textContent = label;
+                    const sectionMeta = el("p", "nsx-config-section-meta", sectionCopy); sectionMeta.textContent = `${list.length} 个模块`;
+                    const fd = el("div", "layui-form nsx-config-section-list", fs);
                     list.forEach(e => { const c = makeCard(e, code); if (c) fd.appendChild(c); });
                     const mi = el("li", "", menuList); if (i === 0) mi.classList.add("layui-menu-item-checked");
-                    const mb = el("div", "layui-menu-body-title", mi), a = el("a", "", mb); a.href = `#group-${i}`; a.textContent = g;
+                    mi.dataset.nsxMenuGroup = `group-${i}`;
+                    const mb = el("div", "layui-menu-body-title", mi), a = el("a", "", mb); a.href = `#group-${i}`;
+                    const menuNumber = el("span", "nsx-config-menu-index", a); menuNumber.textContent = sectionIndex(i);
+                    const menuLabel = el("span", "nsx-config-menu-label", a); menuLabel.textContent = label;
+                    const menuCount = el("small", "nsx-config-menu-count", a); menuCount.textContent = String(list.length);
                 });
 
                 const backupIdx = groupOrder.length;
-                const backupFs = el("fieldset", "layui-elem-field layui-field-title", wrapper); backupFs.id = `group-${backupIdx}`;
-                const backupLg = el("legend", "", backupFs); backupLg.textContent = "配置备份";
-                const backupWrap = el("div", "layui-form", wrapper);
-                const backupCard = el("div", "layui-card layui-form nsx-config-card", backupWrap);
-                const backupHdr = el("div", "layui-card-header", backupCard); backupHdr.textContent = "导出与还原";
-                const backupBody = el("div", "layui-card-body", backupCard);
+                const backupFs = el("section", "nsx-config-section", wrapper); backupFs.id = `group-${backupIdx}`; backupFs.dataset.nsxGroup = "配置备份";
+                const backupSectionHeader = el("header", "nsx-config-section-header", backupFs);
+                const backupSectionNumber = el("span", "nsx-config-section-index", backupSectionHeader); backupSectionNumber.textContent = sectionIndex(backupIdx);
+                const backupSectionCopy = el("div", "", backupSectionHeader);
+                const backupSectionTitle = el("h2", "nsx-config-section-title", backupSectionCopy); backupSectionTitle.textContent = "配置备份";
+                const backupSectionMeta = el("p", "nsx-config-section-meta", backupSectionCopy); backupSectionMeta.textContent = "导出或还原本地设置";
+                const backupWrap = el("div", "layui-form nsx-config-section-list", backupFs);
+                const backupCard = el("section", "layui-form nsx-config-card", backupWrap);
+                const backupHdr = el("div", "nsx-config-card-header", backupCard); backupHdr.textContent = "导出与还原";
+                const backupBody = el("div", "nsx-config-card-body nsx-config-backup-body", backupCard);
                 backupBody.innerHTML = `<div class="nsx-config-tools"><button type="button" class="layui-btn layui-btn-normal" data-nsx-action="export-config">导出配置</button><button type="button" class="layui-btn layui-btn-primary" data-nsx-action="import-config">还原配置</button></div><div class="nsx-config-tools-tip">会备份设置面板中的开关、颜色、数值等配置，以及关键词、历史记录、快捷回复、好友和黑名单等本地数据。</div>`;
                 const backupMi = el("li", "", menuList);
                 const backupMb = el("div", "layui-menu-body-title", backupMi), backupA = el("a", "", backupMb);
                 backupA.href = `#group-${backupIdx}`;
-                backupA.textContent = "配置备份";
+                backupMi.dataset.nsxMenuGroup = `group-${backupIdx}`;
+                const backupMenuNumber = el("span", "nsx-config-menu-index", backupA); backupMenuNumber.textContent = sectionIndex(backupIdx);
+                const backupMenuLabel = el("span", "nsx-config-menu-label", backupA); backupMenuLabel.textContent = "配置备份";
+                const backupMenuCount = el("small", "nsx-config-menu-count", backupA); backupMenuCount.textContent = "1";
 
-                // 底部提示
-                const endFs = el("fieldset", "layui-elem-field layui-field-title", wrapper, "text-align:center");
-                const endLg = el("legend", "", endFs, "font-size:0.8em;opacity:0.5");
-                endLg.textContent = "到底了";
+                const end = el("div", "nsx-config-end", wrapper); end.textContent = "所有设置均保存在当前浏览器";
 
-                const w = window.layui.device().mobile ? "100%" : "620px";
+                const w = window.innerWidth <= 720 || window.layui.device().mobile ? "100%" : `${Math.min(860, Math.round(window.innerWidth * 0.92))}px`;
                 ctx.ui.layer.open({
                     type: 1, offset: "r", anim: "slideLeft", area: [w, "100%"], scrollbar: false, shade: 0.1, shadeClose: false,
-                    btn: ["保存设置", "取消"], btnAlign: "r", title: "Nodeseek Max-iSen 设置", id: "setting-layer-direction-r", content: cont.outerHTML,
+                    btn: ["保存更改", "取消"], btnAlign: "r", title: "Max-iSen 设置", id: "setting-layer-direction-r", content: cont.outerHTML,
                     success: ly => {
                         const r = ly?.[0] || ly;
                         try { window.layui.form?.render(); } catch { }
@@ -2402,15 +2588,17 @@
                         if (content && menu) {
                             const items = menu.querySelectorAll("li");
                             content.addEventListener("scroll", () => {
-                                const groups = content.querySelectorAll("fieldset[id^='group-']");
+                                const groups = content.querySelectorAll(".nsx-config-section[id^='group-']");
+                                const contentTop = content.getBoundingClientRect().top;
                                 let activeIdx = 0;
-                                groups.forEach((g, i) => { if (g.offsetTop - content.scrollTop <= 50) activeIdx = i; });
+                                groups.forEach((g, i) => { if (g.getBoundingClientRect().top - contentTop <= 50) activeIdx = i; });
                                 items.forEach((li, i) => li.classList.toggle("layui-menu-item-checked", i === activeIdx));
                             }, { passive: true });
                         }
                         // 主开关联动
                         const toggleCard = (card, on) => {
-                            card.querySelectorAll(".layui-card-body input,.layui-card-body select,.layui-card-body textarea").forEach(el => {
+                            if (!card) return;
+                            card.querySelectorAll(".nsx-config-card-body input,.nsx-config-card-body select,.nsx-config-card-body textarea").forEach(el => {
                                 el.disabled = !on;
                                 el.closest(".layui-form-item")?.classList.toggle("layui-disabled", !on);
                             });
@@ -2472,13 +2660,13 @@
             };
 
             const menuItems = [
-                { name: "sign_in", cb: switchState, text: "自动签到", states: [{ s1: "❌", s2: "关闭" }, { s1: "🎲", s2: "随机🍗" }, { s1: "📌", s2: "5个🍗" }] },
-                { name: "re_sign", cb: reSign, text: "🔂 重试签到", states: [] },
-                { name: "open_post_in_new_tab", cb: switchNewTab, text: "新标签页打开帖子", states: [{ s1: "❌", s2: "关闭" }, { s1: "✅", s2: "开启" }] },
-                { name: "export_config", cb: exportConfig, text: "📦 导出配置", states: [] },
-                { name: "import_config", cb: importConfig, text: "♻️ 还原配置", states: [], autoClose: false },
-                { name: "advanced_settings", cb: advSettings, text: "⚙️ 高级设置", states: [] },
-                { name: "feedback", cb: () => GM_openInTab("https://greasyfork.org/zh-CN/scripts/588182/feedback", { active: true, insert: true, setParent: true }), text: "💬 反馈 & 建议", states: [] }
+                { name: "advanced_settings", cb: advSettings, text: "打开设置", states: [] },
+                { name: "sign_in", cb: switchState, text: "签到方式", states: [{ s2: "关闭" }, { s2: "随机鸡腿" }, { s2: "5 个鸡腿" }] },
+                { name: "re_sign", cb: reSign, text: "立即重试签到", states: [] },
+                { name: "open_post_in_new_tab", cb: switchNewTab, text: "新标签打开", states: [{ s2: "关闭" }, { s2: "开启" }] },
+                { name: "export_config", cb: exportConfig, text: "导出配置", states: [] },
+                { name: "import_config", cb: importConfig, text: "还原配置", states: [], autoClose: false },
+                { name: "feedback", cb: () => GM_openInTab("https://greasyfork.org/zh-CN/scripts/588182/feedback", { active: true, insert: true, setParent: true }), text: "问题反馈", states: [] }
             ];
 
             regMenus();
@@ -4187,13 +4375,6 @@
       .nsx-mobile .layui-layer .layui-input-block{margin-left:0!important}
       .nsx-mobile .layui-layer-btn{padding-bottom:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
       .nsx-mobile .layui-layer-btn a{min-height:40px;line-height:40px;box-sizing:border-box}
-      .nsx-mobile #setting-layer-direction-r .layui-layer-content>.layui-row{flex-direction:column;height:100%!important}
-      .nsx-mobile #nsx-config-menu{width:100%!important;max-height:112px;flex:0 0 auto;overflow:auto;border-bottom:1px solid #e5e7eb}
-      .nsx-mobile #nsx-config-menu .layui-menu{display:flex;overflow-x:auto;white-space:nowrap;padding:4px;-webkit-overflow-scrolling:touch}
-      .nsx-mobile #nsx-config-menu .layui-menu li{flex:0 0 auto;min-height:40px}
-      .nsx-mobile #nsx-config-content{width:100%!important;flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch}
-      .nsx-mobile .nsx-config-card [class*="layui-col-md"]{width:100%!important}
-
       @media(max-width:420px){
         .nsx-mobile #nsk-head .site-title .beta-icon{display:none}
         .nsx-mobile .content-item{padding-left:8px!important;padding-right:8px!important}
@@ -7671,8 +7852,8 @@
 
                 function registerMenus() {
                     menuIds = [
-                        GM_registerMenuCommand("🎁 打开抽奖提醒", openPanel),
-                        GM_registerMenuCommand("🔔 配置抽奖通知", openNotifyConfig)
+                        GM_registerMenuCommand("抽奖提醒", openPanel),
+                        GM_registerMenuCommand("抽奖通知设置", openNotifyConfig)
                     ].filter(Boolean);
                 }
 

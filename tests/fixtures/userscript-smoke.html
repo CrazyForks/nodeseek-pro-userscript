@@ -6,6 +6,22 @@
   <link rel="icon" href="data:,">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; style-src 'self' 'unsafe-inline' data:; script-src 'self' 'unsafe-inline'; img-src 'self' data:">
   <title>Nodeseek Max-iSen smoke fixture</title>
+  <style>
+    html, body { margin: 0; min-height: 100%; font-family: Arial, sans-serif; }
+    .layui-layer { position: fixed; z-index: 1000; top: 0; right: 0; display: flex; flex-direction: column; max-width: 100vw; height: 100vh; background: #fff; }
+    .layui-layer-title { flex: 0 0 auto; }
+    .layui-layer-setwin { position: absolute; z-index: 2; }
+    .layui-layer-close { display: block; width: 24px; height: 24px; border: 0; background: transparent; color: transparent; }
+    .layui-layer-close::before, .layui-layer-close::after { position: absolute; top: 11px; left: 2px; width: 20px; height: 1px; background: currentColor; content: ''; color: #111; transform: rotate(45deg); }
+    .layui-layer-close::after { transform: rotate(-45deg); }
+    .layui-layer-content { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+    .layui-layer-btn { flex: 0 0 auto; text-align: right; }
+    .layui-layer-btn a { display: inline-block; text-align: center; cursor: pointer; }
+    .layui-form-switch { position: relative; display: inline-flex; align-items: center; justify-content: flex-end; min-width: 54px; height: 28px; padding: 0 8px; border: 1px solid #bfc1c5; border-radius: 999px; color: #fff; font-size: 12px; }
+    .layui-form-switch::after { position: absolute; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; content: ''; }
+    .layui-form-onswitch { justify-content: flex-start; }
+    .layui-form-onswitch::after { right: 3px; left: auto; }
+  </style>
   <script>
     window.__menuCommands = [];
     const gmStore = new Map([["settings", {
@@ -28,9 +44,23 @@
     window.unsafeWindow = window;
     window.__config__ = { user: { member_id: 123, member_name: "Fixture User", nComment: 0 } };
     window.layui = {
-      device: () => ({ mobile: false }),
+      device: () => ({ mobile: innerWidth <= 720 }),
       use: (_modules, callback) => callback?.(),
-      form: { render: () => {}, on: () => {} },
+      form: {
+        render() {
+          document.querySelectorAll('input[lay-skin="switch"]:not([data-fixture-rendered])').forEach(input => {
+            input.dataset.fixtureRendered = 'true';
+            input.style.position = 'absolute';
+            input.style.opacity = '0';
+            input.style.pointerEvents = 'none';
+            const skin = document.createElement('span');
+            skin.className = `layui-form-switch${input.checked ? ' layui-form-onswitch' : ''}`;
+            skin.textContent = input.checked ? '开启' : '关闭';
+            input.insertAdjacentElement('afterend', skin);
+          });
+        },
+        on: () => {}
+      },
       colorpicker: { render: () => {} },
       layer: {
         msg: () => 1,
@@ -47,9 +77,28 @@
         confirm: () => {},
         open(options) {
           const shell = document.createElement("section");
-          shell.id = "fixture-layer";
-          if (typeof options.content === "string") shell.innerHTML = options.content;
-          else if (options.content) shell.appendChild(options.content);
+          shell.id = options.id || "fixture-layer";
+          shell.className = "layui-layer";
+          shell.style.width = options.area?.[0] || "620px";
+          const title = document.createElement("header");
+          title.className = "layui-layer-title";
+          title.textContent = options.title || "";
+          const close = document.createElement("span");
+          close.className = "layui-layer-setwin";
+          close.innerHTML = '<button class="layui-layer-close" type="button" aria-label="关闭"></button>';
+          const content = document.createElement("div");
+          content.className = "layui-layer-content";
+          if (typeof options.content === "string") content.innerHTML = options.content;
+          else if (options.content) content.appendChild(options.content);
+          const actions = document.createElement("footer");
+          actions.className = "layui-layer-btn";
+          (options.btn || []).forEach((label, index) => {
+            const button = document.createElement("a");
+            button.className = `layui-layer-btn${index}`;
+            button.textContent = label;
+            actions.appendChild(button);
+          });
+          shell.append(title, close, content, actions);
           document.body.appendChild(shell);
           options.success?.([shell]);
           return 1;
@@ -64,12 +113,12 @@
       <a id="tracked-link" href="https://example.com/path?utm_source=forum&amp;keep=1">外部链接</a>
       <a id="jump-link">论坛跳板</a>
     </article>
-    <button id="open-settings" type="button">打开高级设置</button>
+    <button id="open-settings" type="button">打开设置</button>
   </main>
   <script>
     document.getElementById("jump-link").href = `${location.origin}/jump?to=${encodeURIComponent("https://example.org/target?utm_campaign=test&ok=1")}`;
     document.getElementById("open-settings").addEventListener("click", () => {
-      window.__menuCommands.find(command => command.label.includes("高级设置"))?.callback();
+      window.__menuCommands.find(command => command.label.includes("打开设置"))?.callback();
     });
   </script>
   <script src="/Nodeseek%20Pro.user.js"></script>
