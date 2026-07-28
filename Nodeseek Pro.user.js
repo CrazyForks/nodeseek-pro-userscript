@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Nodeseek Max-iSen
-// @description  增强 NodeSeek/DeepFlood 论坛体验：自动签到、楼中楼、抽奖提醒、下拉加载、快速评论、内容过滤、等级标记、浏览历史、图片预览及响应式设置面板。
+// @description  增强 NodeSeek/DeepFlood 论坛体验：楼中楼、抽奖提醒、回帖足迹、链接净化、多图床上传、内容过滤、浏览历史及移动端适配。
 // @namespace    http://www.nodeseek.com/
-// @version      1.0.8-lottery.18
+// @version      1.0.8-lottery.19
 // @homepageURL   https://github.com/EISEN0516/nodeseek-pro-userscript
 // @supportURL    https://github.com/EISEN0516/nodeseek-pro-userscript/issues
 // @updateURL     https://raw.githubusercontent.com/EISEN0516/nodeseek-pro-userscript/main/Nodeseek%20Pro.user.js
@@ -43,6 +43,7 @@
 // @connect      qyapi.weixin.qq.com
 // @connect      discord.com
 // @connect      discordapp.com
+// @connect      *
 // @run-at       document-idle
 // @noframes
 // @license      GPL-3.0
@@ -210,7 +211,8 @@
         }
         // 初始化和监听
         sorted.forEach(m => {
-            if (m.match?.(ctx) !== false) {
+            const matched = typeof m.match === "function" ? Boolean(m.match(ctx)) : true;
+            if (matched) {
                 try { m.init?.(ctx); } catch (e) { env.error(m.id, e); }
                 if (ctx.watch) {
                     const w = typeof m.watch === "function" ? m.watch(ctx) : m.watch;
@@ -311,6 +313,42 @@
                     if (n > lv) el.closest(".post-list-item")?.classList.add("blocked-post");
                 });
             };
+            const showHoverCard = (anchor, uid) => {
+                const hoverCard = ctx.uw?.hoverCard;
+                if (!hoverCard || !Number.isFinite(Number(uid))) return;
+                if (!hoverCard.$el || !document.body.contains(hoverCard.$el)) {
+                    hoverCard.setIsHoverCard?.(true);
+                    hoverCard.$mount?.(document.body.appendChild(document.createElement("div")));
+                }
+                const { left, top } = anchor.getBoundingClientRect();
+                Object.assign(hoverCard, { left, top });
+                hoverCard.loadUser?.(Number(uid));
+                hoverCard.show?.();
+            };
+            const bindAppendedAvatars = (doc, pageConfig) => {
+                if (ctx.isList) {
+                    doc.querySelectorAll(".post-list .avatar-normal[data-uid]").forEach(avatar => {
+                        const uid = Number(avatar.dataset.uid);
+                        if (!Number.isFinite(uid)) return;
+                        avatar.addEventListener("click", event => {
+                            event.preventDefault();
+                            showHoverCard(avatar, uid);
+                        });
+                    });
+                    return;
+                }
+                const comments = pageConfig?.postData?.comments;
+                if (!Array.isArray(comments)) return;
+                doc.querySelectorAll(".content-item").forEach((item, index) => {
+                    const uid = Number(comments[index]?.poster?.uid);
+                    const avatar = item.querySelector(".avatar-normal");
+                    if (!avatar || !Number.isFinite(uid)) return;
+                    avatar.addEventListener("click", event => {
+                        event.preventDefault();
+                        showHoverCard(avatar, uid);
+                    });
+                });
+            };
             const processCommentMenus = (commentElements) => {
                 if (!ctx.isPost || !commentElements?.length) return;
                 const existingMenu = document.querySelector(".comment-menu");
@@ -341,15 +379,17 @@
                     const html = await net.get(nextUrl, {}, "text");
                     const doc = new DOMParser().parseFromString(html, "text/html");
                     blockByLevel(doc);
+                    let pageConfig = null;
 
                     // 评论数据同步
                     if (ctx.isPost) {
                         const json = doc.getElementById("temp-script")?.textContent;
                         if (json) try {
-                            const cfg = JSON.parse(decodeURIComponent(atob(json).split("").map(c => "%" + c.charCodeAt(0).toString(16).padStart(2, "0")).join("")));
-                            if (cfg?.postData?.comments) ctx.uw.__config__.postData.comments.push(...cfg.postData.comments);
+                            pageConfig = JSON.parse(decodeURIComponent(atob(json).split("").map(c => "%" + c.charCodeAt(0).toString(16).padStart(2, "0")).join("")));
+                            if (pageConfig?.postData?.comments) ctx.uw.__config__.postData.comments.push(...pageConfig.postData.comments);
                         } catch { }
                     }
+                    bindAppendedAvatars(doc, pageConfig);
 
                     const src = doc.querySelector(profile.list), dst = document.querySelector(profile.list);
                     if (src && dst) {
@@ -1011,6 +1051,278 @@
     }, Symbol.toStringTag, { value: 'Module' }));
 
     /* ==========================================================================
+       [ 🧭 辅助工具 ] - 回帖足迹
+       ========================================================================== */
+    const COMMENT_FOOTPRINT_DB = "nsx-comments-db";
+    const COMMENT_FOOTPRINT_STORE = "nsx-comments-store";
+    const COMMENT_FOOTPRINT_INDEX = "upid";
+    const COMMENT_FOOTPRINT_PROGRESS = { initialized: "nsx_init", page: "nsx_page", time: "nsx_time", count: "nsx_count" };
+
+    /* COMMENT_FOOTPRINT_CORE_START */
+    const commentFootprintPostId = href => {
+        const match = String(href || "").match(/\/post-(\d+)(?:-\d+)?/);
+        return match ? Number(match[1]) : null;
+    };
+    const commentFootprintTargetPage = (floor, pageSize) => Math.max(1, Math.ceil(Number(floor) / Math.max(1, Number(pageSize) || 15)));
+    /* COMMENT_FOOTPRINT_CORE_END */
+
+    let commentFootprintDb = null;
+    let commentFootprintDbPromise = null;
+    const openCommentFootprintDb = () => {
+        if (commentFootprintDb) return Promise.resolve(commentFootprintDb);
+        if (commentFootprintDbPromise) return commentFootprintDbPromise;
+        commentFootprintDbPromise = new Promise((resolve, reject) => {
+            const request = indexedDB.open(COMMENT_FOOTPRINT_DB, 1);
+            request.onerror = () => reject(request.error || new Error("无法打开回帖足迹数据库"));
+            request.onupgradeneeded = event => {
+                const db = event.target.result;
+                const store = db.objectStoreNames.contains(COMMENT_FOOTPRINT_STORE)
+                    ? event.target.transaction.objectStore(COMMENT_FOOTPRINT_STORE)
+                    : db.createObjectStore(COMMENT_FOOTPRINT_STORE, { keyPath: ["uid", "post_id", "floor_id"] });
+                if (!store.indexNames.contains(COMMENT_FOOTPRINT_INDEX)) store.createIndex(COMMENT_FOOTPRINT_INDEX, ["uid", "post_id"]);
+            };
+            request.onsuccess = event => {
+                commentFootprintDb = event.target.result;
+                commentFootprintDb.onclose = () => { commentFootprintDb = null; commentFootprintDbPromise = null; };
+                commentFootprintDb.onversionchange = () => commentFootprintDb.close();
+                resolve(commentFootprintDb);
+            };
+        }).catch(error => { commentFootprintDbPromise = null; throw error; });
+        return commentFootprintDbPromise;
+    };
+
+    const withCommentFootprintStore = async (mode, action) => {
+        const db = await openCommentFootprintDb();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(COMMENT_FOOTPRINT_STORE, mode);
+            transaction.onerror = () => reject(transaction.error || new Error("回帖足迹数据库操作失败"));
+            transaction.onabort = () => reject(transaction.error || new Error("回帖足迹数据库操作已取消"));
+            try { action(transaction.objectStore(COMMENT_FOOTPRINT_STORE), resolve, reject); }
+            catch (error) { reject(error); }
+        });
+    };
+
+    const latestCommentFloor = (uid, postId) => withCommentFootprintStore("readonly", (store, resolve) => {
+        const request = store.openCursor(IDBKeyRange.bound([uid, postId, 0], [uid, postId, Infinity]), "prev");
+        request.onerror = () => resolve(0);
+        request.onsuccess = event => resolve(Number(event.target.result?.value?.floor_id) || 0);
+    });
+
+    const markCommentFootprint = async (ctx, item, uid) => {
+        if (!item || item.dataset.nsxRepliedChecked === "1") return;
+        item.dataset.nsxRepliedChecked = "1";
+        const title = item.querySelector(".post-title");
+        const postId = commentFootprintPostId(title?.querySelector("a[href*='/post-']")?.href);
+        if (!title || !postId) return;
+        try {
+            const floor = await latestCommentFloor(uid, postId);
+            if (!floor) {
+                item.dataset.nsxRepliedEmpty = "1";
+                return;
+            }
+            delete item.dataset.nsxRepliedEmpty;
+            if (title.querySelector(".nsx-replied-badge")) return;
+            const badge = document.createElement("a");
+            badge.className = "nsx-replied-badge";
+            badge.target = "_blank";
+            badge.rel = "noopener";
+            badge.textContent = `已回复 #${floor}`;
+            badge.href = `/post-${postId}-${commentFootprintTargetPage(floor, ctx.uw?.__config__?.commentPerPage)}#${floor}`;
+            title.appendChild(badge);
+        } catch (error) {
+            ctx.env.warn("回帖足迹标记失败", error);
+            delete item.dataset.nsxRepliedChecked;
+        }
+    };
+
+    const commentFootprint = {
+        id: "commentFootprint",
+        order: 365,
+        cfg: { comment_footprint: { enabled: false, reset_db: "", show_stats: "" } },
+        meta: {
+            comment_footprint: {
+                label: "回帖足迹",
+                group: "🧭 辅助工具",
+                fields: {
+                    reset_db: { type: "BUTTON", label: "重置数据", buttonText: "重置足迹", action: "comment_footprint:reset", desc: "仅清除当前账号的本地回帖足迹，并在下次打开页面时重新同步。" },
+                    show_stats: { type: "BUTTON", label: "数据统计", buttonText: "查看统计", action: "comment_footprint:stats", desc: "查看当前账号的同步时间、状态和记录数量。" }
+                }
+            }
+        },
+        match: ctx => ctx.loggedIn,
+        init(ctx) {
+            const uid = Number(ctx.uid);
+            if (!Number.isFinite(uid)) return;
+            const username = String(ctx.user?.member_name || ctx.user?.username || uid);
+            const siteKey = `nsx_comment_footprint_${location.host.replace(/\W/g, "_")}`;
+            const lockKey = `${siteKey}_${uid}_lock`;
+
+            addStyle("nsx-comment-footprint", `.nsx-replied-badge{display:inline-flex;align-items:center;margin-left:8px;padding:2px 7px;border-radius:4px;background:#0f9f6e;color:#fff!important;font-size:12px;line-height:18px;text-decoration:none!important;white-space:nowrap;vertical-align:middle}.nsx-replied-badge:hover{background:#087f5b;color:#fff!important}.nsx-mobile .nsx-replied-badge{margin:4px 4px 0 0;min-height:28px;padding:3px 8px;flex:0 0 auto}`);
+
+            const getSiteProgress = () => {
+                const value = GM_getValue(siteKey, {});
+                return value && typeof value === "object" ? value : {};
+            };
+            const getProgress = (key, fallback) => getSiteProgress()?.[uid]?.[key] ?? fallback;
+            const setProgress = (key, value) => {
+                const all = getSiteProgress();
+                all[uid] ||= {};
+                all[uid][key] = value;
+                GM_setValue(siteKey, all);
+            };
+            const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+            const hasRecord = key => withCommentFootprintStore("readonly", (store, resolve) => {
+                const request = store.get(key);
+                request.onerror = () => resolve(false);
+                request.onsuccess = event => resolve(!!event.target.result);
+            });
+            const putRecord = record => withCommentFootprintStore("readwrite", (store, resolve, reject) => {
+                const request = store.put(record);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+            const countRecords = () => withCommentFootprintStore("readonly", (store, resolve) => {
+                const request = store.index(COMMENT_FOOTPRINT_INDEX).count(IDBKeyRange.bound([uid, 0], [uid, Infinity]));
+                request.onerror = () => resolve(0);
+                request.onsuccess = event => resolve(Number(event.target.result) || 0);
+            });
+            const clearRecords = () => withCommentFootprintStore("readwrite", (store, resolve, reject) => {
+                const request = store.index(COMMENT_FOOTPRINT_INDEX).openCursor(IDBKeyRange.bound([uid, 0], [uid, Infinity]));
+                request.onerror = () => reject(request.error);
+                request.onsuccess = event => {
+                    const cursor = event.target.result;
+                    if (!cursor) return resolve();
+                    cursor.delete();
+                    cursor.continue();
+                };
+            });
+            const markAll = (retryEmpty = false) => {
+                if (!ctx.isList) return;
+                if (retryEmpty) ctx.$$(".post-list-item[data-nsx-replied-empty='1']").forEach(item => {
+                    delete item.dataset.nsxRepliedChecked;
+                    delete item.dataset.nsxRepliedEmpty;
+                });
+                ctx.$$(".post-list-item").forEach(item => markCommentFootprint(ctx, item, uid));
+            };
+
+            const sync = async mode => {
+                const initial = mode === "initial";
+                const commentCount = Math.max(0, Number(ctx.user?.nComment) || 0);
+                const maxPages = commentCount ? Math.ceil(commentCount / 15) : 1000;
+                let page = initial ? Math.max(1, Number(getProgress(COMMENT_FOOTPRINT_PROGRESS.page, 1)) || 1) : 1;
+                let added = 0;
+                let stopped = false;
+                let receivedPage = false;
+                while (!stopped && page <= maxPages) {
+                    const response = await ctx.net.get(`/api/content/list-comments?uid=${encodeURIComponent(uid)}&page=${page}`);
+                    const comments = Array.isArray(response?.comments) ? response.comments : [];
+                    if (!response || response.success === false) throw new Error(response?.message || "无法读取公开回帖记录");
+                    receivedPage = true;
+                    if (!comments.length) break;
+                    for (const comment of comments) {
+                        const postId = Number(comment?.post_id);
+                        const floor = Number(comment?.floor_id);
+                        if (!Number.isFinite(postId) || !Number.isFinite(floor) || floor < 1) continue;
+                        if (await hasRecord([uid, postId, floor])) {
+                            if (!initial) { stopped = true; break; }
+                            continue;
+                        }
+                        await putRecord({ uid, post_id: postId, floor_id: floor });
+                        added += 1;
+                    }
+                    if (initial) setProgress(COMMENT_FOOTPRINT_PROGRESS.page, page + 1);
+                    if (comments.length < 15) break;
+                    page += 1;
+                    if (!stopped) await sleep(1000);
+                }
+                if (!receivedPage && commentCount > 0) throw new Error("未取得公开回帖记录");
+                const total = await countRecords();
+                setProgress(COMMENT_FOOTPRINT_PROGRESS.count, total);
+                setProgress(COMMENT_FOOTPRINT_PROGRESS.time, Date.now());
+                if (initial) {
+                    setProgress(COMMENT_FOOTPRINT_PROGRESS.initialized, true);
+                    setProgress(COMMENT_FOOTPRINT_PROGRESS.page, 1);
+                }
+                return added;
+            };
+
+            const withSyncLock = async action => {
+                if (navigator.locks?.request) return navigator.locks.request(`nsx_comment_footprint_${location.host}_${uid}`, { ifAvailable: true }, lock => lock ? action() : undefined);
+                const token = `${Date.now()}-${Math.random()}`;
+                const existing = GM_getValue(lockKey, null);
+                if (existing?.time && Date.now() - existing.time < 120000) return;
+                GM_setValue(lockKey, { token, time: Date.now() });
+                try { return await action(); }
+                finally { if (GM_getValue(lockKey, null)?.token === token) GM_deleteValue(lockKey); }
+            };
+
+            const startSync = () => withSyncLock(async () => {
+                markAll();
+                if (!getProgress(COMMENT_FOOTPRINT_PROGRESS.initialized, false)) {
+                    const resumePage = Number(getProgress(COMMENT_FOOTPRINT_PROGRESS.page, 1)) || 1;
+                    const message = resumePage > 1
+                        ? `上次同步停在第 ${resumePage} 页，是否继续同步 ${username} 的公开回帖记录？`
+                        : `是否同步 ${username} 的公开回帖记录？首次同步可能需要一些时间。`;
+                    const run = async () => {
+                        try {
+                            ctx.ui.info?.("正在同步回帖足迹，请保持页面开启");
+                            const added = await sync("initial");
+                            ctx.ui.success?.(`回帖足迹同步完成，新增 ${added} 条`);
+                            markAll(true);
+                        } catch (error) {
+                            ctx.env.error("回帖足迹同步失败", error);
+                            ctx.ui.error?.(`回帖足迹同步失败：${error?.message || "未知错误"}`);
+                        }
+                    };
+                    if (ctx.ui.confirm) ctx.ui.confirm("初始化回帖足迹", message, run);
+                    else if (window.confirm(message)) run();
+                    return;
+                }
+                try { if (await sync("incremental")) markAll(true); }
+                catch (error) { ctx.env.warn("回帖足迹增量同步失败", error); }
+            });
+
+            document.addEventListener("nsx-action", async event => {
+                if (event.detail === "comment_footprint:reset") {
+                    const reset = async () => {
+                        try {
+                            await clearRecords();
+                            const all = getSiteProgress();
+                            delete all[uid];
+                            GM_setValue(siteKey, all);
+                            ctx.ui.success?.("当前账号的回帖足迹已重置");
+                            setTimeout(() => location.reload(), 600);
+                        } catch (error) { ctx.ui.error?.(`重置失败：${error?.message || "未知错误"}`); }
+                    };
+                    if (ctx.ui.layer) ctx.ui.layer.confirm("仅清除当前账号的本地回帖足迹。", { title: "确认重置？", icon: 3 }, index => { ctx.ui.layer.close(index); reset(); });
+                    else if (window.confirm("确认重置当前账号的回帖足迹？")) reset();
+                }
+                if (event.detail === "comment_footprint:stats") {
+                    const total = await countRecords();
+                    const last = Number(getProgress(COMMENT_FOOTPRINT_PROGRESS.time, 0));
+                    const text = `账号：${username}\n状态：${getProgress(COMMENT_FOOTPRINT_PROGRESS.initialized, false) ? "已完成首次同步" : "尚未完成首次同步"}\n记录：${total} 条\n最近更新：${last ? new Date(last).toLocaleString() : "无"}`;
+                    if (ctx.ui.alert) ctx.ui.alert("回帖足迹统计", text);
+                    else window.alert(text);
+                }
+            });
+            if (ctx.store.get("comment_footprint.enabled", false) && !ctx.store.get("rules_compliance.enabled", true)) startSync();
+        },
+        watch: ctx => {
+            if (!ctx.store.get("comment_footprint.enabled", false) || ctx.store.get("rules_compliance.enabled", true)) return null;
+            return {
+                sel: ".post-list-item:not([data-nsx-replied-checked='1'])",
+                fn: items => items.forEach(item => markCommentFootprint(ctx, item, Number(ctx.uid))),
+                opts: { debounce: 100 }
+            };
+        }
+    };
+
+    const __vite_glob_0_24 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+        __proto__: null,
+        default: commentFootprint
+    }, Symbol.toStringTag, { value: 'Module' }));
+
+    /* ==========================================================================
        [ 🧭 辅助工具 ] - 快捷键回复 (Ctrl+Enter)
        ========================================================================== */
     const commentShortcut = {
@@ -1331,6 +1643,264 @@
     }, Symbol.toStringTag, { value: 'Module' }));
 
     /* ==========================================================================
+       [ 🔒 隐私与规则 ] - 链接净化
+       ========================================================================== */
+    const LINK_PURIFIER_DEFAULT_RULES = `
+# 常见跟踪参数
+@utm = utm_source, utm_medium, utm_campaign, utm_content, utm_term
+@ad = ad_id, clickid, gclid, fbclid, sc_cid
+@affiliate = aff, affiliate, partner, promo, promocode, coupon, subid, affid, aff_id
+@track = aid, cid, tid, sid, ref_id, tag, via, from, source, campaign, channel
+
+* >> @utm, @ad
+*.youtube.com youtu.be >> si, feature, pp
+*.bilibili.com b23.tv >> spm_id_from, from_source, from_spmid, seid, share_source, share_medium, share_plat, share_tag, share_session_id, share_from, bbid, ts, timestamp, unique_k, rt, tdsourcetag, spm, vd_source, trackid
+*.amazon.com >> /\\/ref=[^\\/]+/
+
+# 防止误删有业务含义的参数
+~github.com ~gitlab.com ~gitee.com >> ref
+~t.me ~telegram.me >> start
+`.trim();
+    const LINK_PURIFIER_SHORT_HOSTS = [
+        "bit.ly", "goo.gl", "t.co", "t.cn", "ow.ly", "is.gd", "buff.ly",
+        "tinyurl.com", "tr.im", "shorturl.at", "rebrand.ly", "su.pr", "i3z.cc", "b23.tv"
+    ];
+    const LINK_PURIFIER_SELECTOR = ".post-content a[href],.markdown-body a[href],.comment-content a[href]";
+
+    /* LINK_PURIFIER_CORE_START */
+    function parseLinkPurifierRules(text) {
+        const rules = { allow: [], block: [], pathBlock: [] };
+        const macros = {};
+        String(text || "").split("\n").forEach(rawLine => {
+            const line = rawLine.trim();
+            if (!line || line.startsWith("#")) return;
+            if (line.startsWith("@")) {
+                const index = line.indexOf("=");
+                if (index > 0) macros[line.slice(0, index).trim()] = line.slice(index + 1).split(",").map(value => value.trim()).filter(Boolean);
+                return;
+            }
+            const index = line.indexOf(">>");
+            if (index < 0) return;
+            const scopeText = line.slice(0, index).trim();
+            const parameterText = line.slice(index + 2).trim();
+            if (!scopeText || !parameterText) return;
+            const allow = scopeText.startsWith("~");
+            const scopes = scopeText.split(/\s+/).map(scope => scope.replace(/^~/, "").toLowerCase()).filter(Boolean);
+            parameterText.split(",").flatMap(value => macros[value.trim()] || [value.trim()]).filter(Boolean).forEach(parameter => {
+                if (parameter.startsWith("/") && parameter.endsWith("/")) {
+                    if (allow) return;
+                    try { rules.pathBlock.push({ scopes, regex: new RegExp(parameter.slice(1, -1)) }); } catch { }
+                    return;
+                }
+                let matcher;
+                if (parameter === "*") matcher = () => true;
+                else if (parameter.includes("*")) {
+                    const escaped = parameter.split("*").map(value => value.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+                    const regex = new RegExp(`^${escaped}$`, "i");
+                    matcher = value => regex.test(value);
+                } else {
+                    const normalized = parameter.toLowerCase();
+                    matcher = value => String(value).toLowerCase() === normalized;
+                }
+                rules[allow ? "allow" : "block"].push({ scopes, matcher });
+            });
+        });
+        return rules;
+    }
+
+    function purifyTrackedUrl(rawUrl, rules) {
+        try {
+            const url = new URL(rawUrl);
+            if (!/^https?:$/.test(url.protocol)) return { url: rawUrl, removed: [] };
+            const matchesScope = (hostname, scope) => {
+                const normalized = scope.startsWith("*.") ? scope.slice(2) : scope;
+                return scope === "*" || hostname === normalized || hostname.endsWith(`.${normalized}`);
+            };
+            const removed = [];
+            const clean = value => {
+                const parameters = new URLSearchParams(value);
+                const names = [...new Set(parameters.keys())];
+                const deletions = names.filter(name => {
+                    const matches = list => list.some(rule => rule.scopes.some(scope => matchesScope(url.hostname.toLowerCase(), scope)) && rule.matcher(name));
+                    return !matches(rules.allow) && matches(rules.block);
+                });
+                deletions.forEach(name => { parameters.delete(name); removed.push(name); });
+                return deletions.length ? parameters.toString() : null;
+            };
+            const query = clean(url.search);
+            if (query !== null) url.search = query;
+            if (url.hash.includes("?")) {
+                const index = url.hash.indexOf("?");
+                const prefix = url.hash.slice(0, index);
+                const hashQuery = clean(url.hash.slice(index + 1));
+                if (hashQuery !== null) url.hash = hashQuery ? `${prefix}?${hashQuery}` : prefix;
+            }
+            let path = url.pathname;
+            rules.pathBlock.forEach(rule => {
+                if (rule.scopes.some(scope => matchesScope(url.hostname.toLowerCase(), scope))) path = path.replace(rule.regex, "");
+            });
+            if (path !== url.pathname) {
+                url.pathname = path.replace(/\/{2,}/g, "/") || "/";
+                removed.push("(path)");
+            }
+            return { url: removed.length ? url.toString() : rawUrl, removed };
+        } catch { return { url: rawUrl, removed: [] }; }
+    }
+
+    function unwrapForumJump(rawUrl, forumOrigin) {
+        try {
+            let url = new URL(rawUrl, forumOrigin);
+            let changed = false;
+            for (let count = 0; count < 3 && url.origin === forumOrigin && url.pathname === "/jump" && url.searchParams.has("to"); count += 1) {
+                url = new URL(url.searchParams.get("to"), forumOrigin);
+                changed = true;
+            }
+            return { url: url.toString(), changed };
+        } catch { return { url: rawUrl, changed: false }; }
+    }
+    /* LINK_PURIFIER_CORE_END */
+
+    const linkPurifierShortCache = new Map();
+    const resolveShortLink = href => {
+        if (!linkPurifierShortCache.has(href)) {
+            linkPurifierShortCache.set(href, new Promise(resolve => {
+                GM_xmlhttpRequest({
+                    method: "HEAD",
+                    url: href,
+                    timeout: 10000,
+                    anonymous: true,
+                    onload: response => resolve({ ok: response.status >= 200 && response.status < 400, url: response.finalUrl || href }),
+                    onerror: () => resolve({ ok: false, url: href }),
+                    ontimeout: () => resolve({ ok: false, url: href })
+                });
+            }));
+        }
+        return linkPurifierShortCache.get(href);
+    };
+
+    const openLinkPurifierRuleEditor = ctx => {
+        if (!ctx.ui.layer) return;
+        const wrap = document.createElement("div");
+        wrap.style.padding = "14px";
+        const textarea = document.createElement("textarea");
+        textarea.id = "nsx-link-purifier-rules";
+        textarea.className = "layui-textarea";
+        textarea.style.cssText = "width:100%;height:min(62vh,420px);font-family:monospace;font-size:13px;line-height:1.55;resize:vertical;box-sizing:border-box";
+        textarea.value = ctx.store.get("link_purifier.rules", LINK_PURIFIER_DEFAULT_RULES);
+        wrap.appendChild(textarea);
+        ctx.ui.layer.open({
+            type: 1,
+            title: "链接净化规则",
+            area: [window.innerWidth <= 720 ? "96vw" : "660px", window.innerWidth <= 720 ? "82vh" : "540px"],
+            content: wrap,
+            btn: ["保存规则", "恢复默认", "取消"],
+            yes(index) {
+                ctx.store.set("link_purifier.rules", textarea.value.trim() || LINK_PURIFIER_DEFAULT_RULES);
+                ctx.ui.layer.close(index);
+                ctx.ui.success?.("链接净化规则已保存，刷新页面后生效");
+            },
+            btn2() { textarea.value = LINK_PURIFIER_DEFAULT_RULES; return false; }
+        });
+    };
+
+    const linkPurifier = {
+        id: "linkPurifier",
+        order: 370,
+        cfg: {
+            link_purifier: {
+                enabled: true,
+                resolve_short: false,
+                short_hosts: LINK_PURIFIER_SHORT_HOSTS,
+                mark_external: true,
+                force_blank: true,
+                edit_rules: ""
+            }
+        },
+        meta: {
+            link_purifier: {
+                label: "链接净化",
+                group: "🔒 隐私与规则",
+                hidden: ["rules"],
+                fields: {
+                    resolve_short: { type: "SWITCH", label: "展开短链接", desc: "开启后会主动请求正文中的短链接以取得最终地址；默认关闭，避免额外网络访问。" },
+                    short_hosts: { type: "TEXTAREA", label: "短链域名", placeholder: "每行一个域名", valueType: "array" },
+                    mark_external: { type: "SWITCH", label: "标记外部链接" },
+                    force_blank: { type: "SWITCH", label: "外链新标签页打开" },
+                    edit_rules: { type: "BUTTON", label: "净化规则", buttonText: "编辑规则", action: "link_purifier:edit_rules" }
+                }
+            }
+        },
+        match: () => true,
+        init(ctx) {
+            document.addEventListener("nsx-action", event => {
+                if (event.detail === "link_purifier:edit_rules") openLinkPurifierRuleEditor(ctx);
+            });
+            if (!ctx.store.get("link_purifier.enabled", true)) return;
+            const icon = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'/%3E%3Cpath d='M15 3h6v6M10 14 21 3'/%3E%3C/svg%3E")`;
+            addStyle("nsx-link-purifier", `a.nsx-external-link::after{content:"";display:inline-block;width:12px;height:12px;margin-left:4px;background:${icon} no-repeat center/contain;vertical-align:middle;opacity:.72}a.nsx-cleaned-link{border-bottom:1px dashed #28a745!important;text-decoration:none}a.nsx-short-resolving{cursor:wait;opacity:.65}`);
+            const shortHosts = new Set((ctx.store.get("link_purifier.short_hosts", LINK_PURIFIER_SHORT_HOSTS) || []).map(value => String(value).trim().toLowerCase()).filter(Boolean));
+            const resolveShort = ctx.store.get("link_purifier.resolve_short", false) && !ctx.store.get("rules_compliance.enabled", true);
+            const markExternal = ctx.store.get("link_purifier.mark_external", true);
+            const forceBlank = ctx.store.get("link_purifier.force_blank", true);
+            const rules = parseLinkPurifierRules(ctx.store.get("link_purifier.rules", LINK_PURIFIER_DEFAULT_RULES));
+            const processed = new WeakMap();
+
+            const processLink = async anchor => {
+                const originalHref = anchor.getAttribute("href");
+                if (!originalHref || processed.get(anchor) === originalHref) return;
+                const jump = unwrapForumJump(originalHref, location.origin);
+                let url;
+                try { url = new URL(jump.url, location.href); } catch { return; }
+                if (!/^https?:$/.test(url.protocol)) return;
+                const notes = [];
+                if (jump.changed) notes.push("已绕过论坛跳转页");
+                if (resolveShort && shortHosts.has(url.hostname.toLowerCase())) {
+                    anchor.classList.add("nsx-short-resolving");
+                    const resolved = await resolveShortLink(url.toString());
+                    anchor.classList.remove("nsx-short-resolving");
+                    if (!anchor.isConnected || anchor.getAttribute("href") !== originalHref) return;
+                    if (resolved.ok) {
+                        try { url = new URL(resolved.url); notes.push("已展开短链接"); } catch { }
+                    }
+                }
+                const purified = purifyTrackedUrl(url.toString(), rules);
+                if (purified.removed.length) {
+                    url = new URL(purified.url);
+                    notes.push(`已移除：${purified.removed.join(", ")}`);
+                }
+                if (notes.length) {
+                    anchor.href = url.toString();
+                    anchor.classList.add("nsx-cleaned-link");
+                    if (!anchor.title) anchor.title = notes.join("\n");
+                }
+                const external = url.hostname.toLowerCase() !== location.hostname.toLowerCase();
+                if (external && markExternal) anchor.classList.add("nsx-external-link");
+                if (external && forceBlank) {
+                    anchor.target = "_blank";
+                    anchor.rel = [...new Set(`${anchor.rel || ""} noopener noreferrer`.trim().split(/\s+/))].join(" ");
+                }
+                processed.set(anchor, anchor.getAttribute("href"));
+            };
+
+            const enqueue = root => {
+                if (root instanceof HTMLAnchorElement && root.matches(LINK_PURIFIER_SELECTOR)) processLink(root);
+                root?.querySelectorAll?.(LINK_PURIFIER_SELECTOR).forEach(processLink);
+            };
+            enqueue(document);
+            const root = document.body || document.documentElement;
+            if (root) new MutationObserver(mutations => mutations.forEach(mutation => {
+                if (mutation.type === "attributes") enqueue(mutation.target);
+                else mutation.addedNodes.forEach(node => { if (node.nodeType === 1) enqueue(node); });
+            })).observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href"] });
+        }
+    };
+
+    const __vite_glob_0_25 = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+        __proto__: null,
+        default: linkPurifier
+    }, Symbol.toStringTag, { value: 'Module' }));
+
+    /* ==========================================================================
        [ 系统核心 ] - 设置菜单 (高级设置面板)
        ========================================================================== */
     // 菜单系统（油猴菜单 + 高级设置面板）
@@ -1604,6 +2174,17 @@
                     });
                 }
             };
+            const bindModuleActions = root => {
+                root?.querySelectorAll?.("[data-nsx-module-action]").forEach(button => {
+                    if (button.dataset.nsxActionBound === "1") return;
+                    button.dataset.nsxActionBound = "1";
+                    button.addEventListener("click", event => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        document.dispatchEvent(new CustomEvent("nsx-action", { detail: button.dataset.nsxModuleAction }));
+                    });
+                });
+            };
 
             const switchNewTab = () => {
                 const next = !store.get("open_post_in_new_tab.enabled", false);
@@ -1679,6 +2260,11 @@
                     const col = f.col ?? defaultCol;
                     const w = el("div", `layui-col-md${col}`), item = el("div", "layui-form-item", w);
                     const lbl = el("label", "layui-form-label", item); lbl.textContent = f.label || f.key;
+                    if (f.desc) {
+                        const help = el("span", "layui-icon layui-icon-help", lbl);
+                        help.title = f.desc;
+                        help.style.cssText = "margin-left:5px;color:#999;cursor:help";
+                    }
                     const blk = el("div", "layui-input-block", item);
 
                     if (f.type === "SWITCH") {
@@ -1699,7 +2285,10 @@
                     else if (f.type === "SELECT" && f.options) {
                         const sel = el("select", "", blk); sel.name = path;
                         sel.dataset.valueType = f.valueType || "";
-                        Object.entries(f.options).forEach(([k, v]) => {
+                        const options = Array.isArray(f.options)
+                            ? f.options.map(option => [option.value, option.text])
+                            : Object.entries(f.options);
+                        options.forEach(([k, v]) => {
                             const opt = el("option", "", sel);
                             opt.value = k; opt.textContent = v;
                             if (String(val) === String(k)) opt.setAttribute("selected", "selected");
@@ -1720,6 +2309,12 @@
                         wrap.setAttribute("data-color-inp", path);
                         wrap.setAttribute("data-color-default", f.defaultVal ?? "");
                     }
+                    else if (f.type === "BUTTON") {
+                        const button = el("button", "layui-btn layui-btn-primary layui-btn-sm", blk);
+                        button.type = "button";
+                        button.textContent = f.buttonText || "执行";
+                        if (f.action) button.dataset.nsxModuleAction = f.action;
+                    }
                     else {
                         let inp = el("input", "layui-input", blk);
                         inp.type = f.type === "NUMBER" ? "number" : "text";
@@ -1728,7 +2323,7 @@
                         inp.dataset.valueType = f.valueType || "";
                     }
 
-                    const firstInp = w.querySelector("input, textarea");
+                    const firstInp = w.querySelector("input, textarea, select");
                     if (firstInp && !firstInp.dataset.valueType) firstInp.dataset.valueType = f.valueType || "";
                     return w;
                 };
@@ -1752,7 +2347,7 @@
                     const cols = m.cols || 1, defaultCol = Math.floor(12 / cols);
                     Object.keys(cfg).filter(k => k !== "enabled" && !isObj(cfg[k]) && !hidden.has(k)).forEach(k => {
                         const fm = fields[k] || {};
-                        const f = { key: k, label: fm.label || k, type: inferType(cfg[k], fm), options: fm.options, placeholder: fm.placeholder, valueType: inferVT(cfg[k], fm), col: fm.col, defaultVal: cfg[k] };
+                        const f = { key: k, label: fm.label || k, type: inferType(cfg[k], fm), options: fm.options, placeholder: fm.placeholder, valueType: inferVT(cfg[k], fm), col: fm.col, defaultVal: cfg[k], desc: fm.desc, buttonText: fm.buttonText, action: fm.action };
                         let cur = store.get(`${base}.${k}`, cfg[k]);
                         // 处理旧版本 hide -> official 的映射
                         if (k === 'blacklist_mode' && cur === 'hide') cur = 'official';
@@ -1800,6 +2395,7 @@
                         const r = ly?.[0] || ly;
                         try { window.layui.form?.render(); } catch { }
                         bindBackupTools(r);
+                        bindModuleActions(r);
                         // 滚动同步：右侧滚动时高亮左侧菜单
                         const content = r?.querySelector?.("#nsx-config-content");
                         const menu = r?.querySelector?.("#nsx-config-menu");
@@ -1882,7 +2478,7 @@
                 { name: "export_config", cb: exportConfig, text: "📦 导出配置", states: [] },
                 { name: "import_config", cb: importConfig, text: "♻️ 还原配置", states: [], autoClose: false },
                 { name: "advanced_settings", cb: advSettings, text: "⚙️ 高级设置", states: [] },
-                { name: "feedback", cb: () => GM_openInTab("https://greasyfork.org/zh-CN/scripts/567109/feedback", { active: true, insert: true, setParent: true }), text: "💬 反馈 & 建议", states: [] }
+                { name: "feedback", cb: () => GM_openInTab("https://greasyfork.org/zh-CN/scripts/588182/feedback", { active: true, insert: true, setParent: true }), text: "💬 反馈 & 建议", states: [] }
             ];
 
             regMenus();
@@ -3641,6 +4237,12 @@
         if (has("rules_compliance")) {
             setTimeout(() => location.reload(), 350);
         }
+        if (has("image_upload")) {
+            setTimeout(() => location.reload(), 350);
+        }
+        if (has("comment_footprint") || has("link_purifier")) {
+            setTimeout(() => location.reload(), 350);
+        }
         if (has("visited_color")) {
             const styleId = "nsx-visited-color";
             const enabled = ctx.store.get("visited_color.enabled", true);
@@ -3771,7 +4373,7 @@
         addScript("nsx-hljs-onload", `(()=>{const r=()=>{if(window.hljs&&typeof hljs.highlightAll==="function")hljs.highlightAll()};document.readyState==="complete"?r():window.addEventListener("load",r,{once:true})})()`);
 
         // 加载模块
-        const mods = /* #__PURE__ */ Object.assign({ "./features/autoJump.js": __vite_glob_0_0, "./features/autoLoading.js": __vite_glob_0_1, "./features/callout.js": __vite_glob_0_5, "./features/codeHighlight.js": __vite_glob_0_6, "./features/commentShortcut.js": __vite_glob_0_7, "./features/darkMode.js": __vite_glob_0_8, "./features/history.js": __vite_glob_0_9, "./features/imageSlide.js": __vite_glob_0_10, "./features/instantPage.js": __vite_glob_0_11, "./features/levelTag.js": __vite_glob_0_12, "./features/menus.js": __vite_glob_0_13, "./features/quickComment.js": __vite_glob_0_14, "./features/aiComment.js": __vite_glob_0_15, "./features/signIn.js": __vite_glob_0_16, "./features/signinTips.js": __vite_glob_0_17, "./features/smoothScroll.js": __vite_glob_0_18, "./features/userCardExt.js": __vite_glob_0_19, "./features/visitedColor.js": __vite_glob_0_20, "./features/timeChinese.js": __vite_glob_0_21, "./features/emailNavLink.js": __vite_glob_0_22, "./features/communicationQuickLinks.js": __vite_glob_0_23 });
+        const mods = /* #__PURE__ */ Object.assign({ "./features/autoJump.js": __vite_glob_0_0, "./features/autoLoading.js": __vite_glob_0_1, "./features/callout.js": __vite_glob_0_5, "./features/codeHighlight.js": __vite_glob_0_6, "./features/commentFootprint.js": __vite_glob_0_24, "./features/commentShortcut.js": __vite_glob_0_7, "./features/darkMode.js": __vite_glob_0_8, "./features/history.js": __vite_glob_0_9, "./features/imageSlide.js": __vite_glob_0_10, "./features/instantPage.js": __vite_glob_0_11, "./features/levelTag.js": __vite_glob_0_12, "./features/linkPurifier.js": __vite_glob_0_25, "./features/menus.js": __vite_glob_0_13, "./features/quickComment.js": __vite_glob_0_14, "./features/aiComment.js": __vite_glob_0_15, "./features/signIn.js": __vite_glob_0_16, "./features/signinTips.js": __vite_glob_0_17, "./features/smoothScroll.js": __vite_glob_0_18, "./features/userCardExt.js": __vite_glob_0_19, "./features/visitedColor.js": __vite_glob_0_20, "./features/timeChinese.js": __vite_glob_0_21, "./features/emailNavLink.js": __vite_glob_0_22, "./features/communicationQuickLinks.js": __vite_glob_0_23 });
         Object.values(mods).forEach(m => {
             const mod = m?.default;
             if (!mod) return;
@@ -3837,17 +4439,23 @@
             id: "imageUpload",
             deps: ["ui"],
             order: 150,
-            cfg: { image_upload: { enabled: true, api_key: "" } },
+            cfg: { image_upload: { enabled: true, active: "NodeImage", api_key: "", url: "", token: "", headers: "" } },
             meta: {
                 image_upload: {
-                    label: "图床上传助手",
+                    label: "多图床上传助手",
                     group: "🚀 基础功能",
                     fields: {
-                        api_key: { type: "TEXT", label: "NodeImage API Key", placeholder: "留空或填写 API Key" }
+                        active: { type: "SELECT", label: "当前图床", options: { NodeImage: "NodeImage（默认）", Chevereto: "Chevereto", LskyPro: "Lsky Pro", EasyImages: "EasyImages", Telegraph: "Telegraph", Telegraph2: "Telegraph v2" } },
+                        api_key: { type: "TEXT", label: "NodeImage API Key", placeholder: "NodeImage 可留空自动获取" },
+                        url: { type: "TEXT", label: "自定义图床地址", placeholder: "https://example.com", desc: "使用非 NodeImage 图床时填写；Telegraph 留空则使用 telegra.ph。" },
+                        token: { type: "TEXT", label: "自定义图床 Token", placeholder: "API Token / Key", desc: "Chevereto、Lsky Pro 等图床使用；Telegraph 通常不需要。" },
+                        headers: { type: "TEXTAREA", label: "自定义请求头", placeholder: "{\n  \"Authorization\": \"Basic ...\"\n}", desc: "可选，必须是合法 JSON 对象。" }
                     }
                 }
             },
-            match: ctx => (ctx.isPost || location.pathname.startsWith('/new-discussion') || location.pathname.startsWith('/notification')) && ctx.store.get("image_upload.enabled", true),
+            match: ctx => (ctx.isPost || location.pathname.startsWith('/new-discussion') || location.pathname.startsWith('/notification'))
+                && ctx.store.get("image_upload.enabled", true)
+                && ctx.store.get("image_upload.active", "NodeImage") === "NodeImage",
             init(ctx) {
                 const APP = {
                     api: {
@@ -4118,6 +4726,193 @@
             }
         };
         define(imageUpload);
+
+        const externalImageUpload = {
+            id: "externalImageUpload",
+            deps: ["ui"],
+            order: 151,
+            match: ctx => (ctx.isPost || location.pathname.startsWith("/new-discussion") || location.pathname.startsWith("/notification"))
+                && ctx.store.get("image_upload.enabled", true)
+                && ctx.store.get("image_upload.active", "NodeImage") !== "NodeImage",
+            init(ctx) {
+                const providerName = ctx.store.get("image_upload.active", "NodeImage");
+                const providerLabels = { Chevereto: "Chevereto", LskyPro: "Lsky Pro", EasyImages: "EasyImages", Telegraph: "Telegraph", Telegraph2: "Telegraph v2" };
+                const parseHeaders = () => {
+                    const raw = String(ctx.store.get("image_upload.headers", "") || "").trim();
+                    if (!raw) return {};
+                    const value = JSON.parse(raw);
+                    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("自定义请求头必须是 JSON 对象");
+                    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, String(item)]));
+                };
+                const formData = (name, file, extra = {}) => {
+                    const form = new FormData();
+                    form.append(name, file);
+                    Object.entries(extra).forEach(([key, value]) => form.append(key, value));
+                    return form;
+                };
+                const configuredUrl = String(ctx.store.get("image_upload.url", "") || "").trim();
+                const token = String(ctx.store.get("image_upload.token", "") || "").trim();
+                let baseUrl = "";
+                let customHeaders = {};
+                let configurationError = "";
+                try {
+                    const value = configuredUrl || (providerName === "Telegraph" ? "https://telegra.ph" : "");
+                    if (!value) throw new Error(`${providerLabels[providerName] || providerName} 需要填写图床地址`);
+                    const url = new URL(value);
+                    if (!/^https?:$/.test(url.protocol)) throw new Error("图床地址只支持 HTTP 或 HTTPS");
+                    baseUrl = url.href.replace(/\/$/, "");
+                    customHeaders = parseHeaders();
+                } catch (error) {
+                    configurationError = error?.message || "图床配置无效";
+                }
+
+                const providers = {
+                    Telegraph: {
+                        request: file => ({ url: `${baseUrl}/upload`, data: formData("file", file), headers: customHeaders }),
+                        result: payload => {
+                            const path = String(payload?.[0]?.src || "").trim();
+                            return path ? `${baseUrl}${path.startsWith("/") ? "" : "/"}${path}` : "";
+                        }
+                    },
+                    Telegraph2: {
+                        request: file => ({ url: `${baseUrl}/upload`, data: formData("file", file), headers: customHeaders }),
+                        result: payload => payload?.data
+                    },
+                    LskyPro: {
+                        request: file => ({ url: `${baseUrl}/api/v1/upload`, data: formData("file", file), headers: { Accept: "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...customHeaders } }),
+                        result: payload => payload?.data?.links?.url
+                    },
+                    Chevereto: {
+                        request: file => ({ url: `${baseUrl}/api/1/upload`, data: formData("source", file), headers: { Accept: "application/json", ...(token ? { "X-API-Key": token } : {}), ...customHeaders } }),
+                        result: payload => payload?.image?.url
+                    },
+                    EasyImages: {
+                        request: file => ({
+                            url: `${baseUrl}${token ? "/api/index.php" : "/app/upload.php"}`,
+                            data: formData(token ? "image" : "file", file, token ? { token } : { sign: Math.floor(Date.now() / 1000) }),
+                            headers: customHeaders
+                        }),
+                        result: payload => payload?.url
+                    }
+                };
+                const provider = providers[providerName];
+                if (!provider) configurationError = `不支持的图床类型：${providerName}`;
+
+                const requestJson = options => new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method: "POST",
+                        url: options.url,
+                        data: options.data,
+                        headers: options.headers,
+                        timeout: 30000,
+                        responseType: "json",
+                        onload: response => {
+                            let payload = response.response;
+                            if (payload == null && response.responseText) {
+                                try { payload = JSON.parse(response.responseText); } catch { }
+                            }
+                            if (response.status >= 200 && response.status < 300) resolve(payload);
+                            else reject(new Error(`HTTP ${response.status}`));
+                        },
+                        onerror: () => reject(new Error("图床请求失败")),
+                        ontimeout: () => reject(new Error("图床请求超时"))
+                    });
+                });
+
+                const statusElements = new Set();
+                const setStatus = (text, type = "info") => statusElements.forEach(element => {
+                    element.textContent = text;
+                    element.dataset.type = type;
+                });
+                const activeEditor = target => target?.closest?.(".md-editor")?.querySelector(".CodeMirror")?.CodeMirror
+                    || document.activeElement?.closest?.(".CodeMirror")?.CodeMirror
+                    || document.querySelector(".CodeMirror")?.CodeMirror;
+                const imageFiles = items => Array.from(items || []).map(item => item?.getAsFile ? item.getAsFile() : item).filter(file => file?.type?.startsWith("image/"));
+                const uploadFiles = async (files, editor) => {
+                    const selected = imageFiles(files);
+                    if (!selected.length) return;
+                    if (configurationError) {
+                        setStatus(configurationError, "error");
+                        ctx.ui.error?.(configurationError);
+                        return;
+                    }
+                    setStatus(`上传中 0/${selected.length}`, "info");
+                    let completed = 0;
+                    const results = await Promise.all(selected.map(async (file, index) => {
+                        try {
+                            const payload = await requestJson(provider.request(file));
+                            const url = String(provider.result(payload) || "").trim();
+                            if (!/^https?:\/\//i.test(url)) throw new Error("图床没有返回有效图片地址");
+                            return { index, markdown: `![${file.name || "image"}](${url})` };
+                        } catch (error) {
+                            return { index, error };
+                        } finally {
+                            completed += 1;
+                            setStatus(`上传中 ${completed}/${selected.length}`, "info");
+                        }
+                    }));
+                    const succeeded = results.filter(result => result.markdown).sort((left, right) => left.index - right.index);
+                    const failed = results.filter(result => result.error);
+                    if (succeeded.length && editor) editor.replaceRange(`\n${succeeded.map(result => result.markdown).join("\n")}\n`, editor.getCursor());
+                    if (failed.length) {
+                        const message = `${succeeded.length} 张成功，${failed.length} 张失败：${failed[0].error?.message || "未知错误"}`;
+                        setStatus(message, "error");
+                        ctx.ui.warning?.(message);
+                    } else {
+                        setStatus(`${succeeded.length} 张上传成功`, "success");
+                        ctx.ui.success?.(`${providerLabels[providerName] || providerName} 上传完成`);
+                    }
+                    setTimeout(() => setStatus(`${providerLabels[providerName] || providerName} 已就绪`, "ready"), 2500);
+                };
+
+                addStyle("nsx-external-image-upload", `.nsx-external-image-status{display:inline-flex;align-items:center;margin-left:8px;font-size:12px;color:#777}.nsx-external-image-status[data-type="success"],.nsx-external-image-status[data-type="ready"]{color:#159957}.nsx-external-image-status[data-type="error"]{color:#d33}.nsx-mobile .nsx-external-image-status{display:none}`);
+                const setupToolbar = toolbar => {
+                    if (!toolbar || toolbar.dataset.nsxExternalImageReady === "1") return;
+                    const original = toolbar.querySelector(".toolbar-item.i-icon.i-icon-pic,.i-icon-pic.toolbar-item");
+                    if (!original) return;
+                    toolbar.dataset.nsxExternalImageReady = "1";
+                    const button = original.cloneNode(true);
+                    button.title = providerLabels[providerName] || providerName;
+                    original.replaceWith(button);
+                    button.addEventListener("click", event => {
+                        event.preventDefault();
+                        const input = document.createElement("input");
+                        input.type = "file";
+                        input.accept = "image/*";
+                        input.multiple = true;
+                        input.onchange = () => uploadFiles(input.files, activeEditor(toolbar));
+                        input.click();
+                    });
+                    const status = document.createElement("span");
+                    status.className = "nsx-external-image-status";
+                    status.dataset.type = configurationError ? "error" : "ready";
+                    status.textContent = configurationError || `${providerLabels[providerName] || providerName} 已就绪`;
+                    toolbar.appendChild(status);
+                    statusElements.add(status);
+                };
+
+                document.querySelectorAll(".mde-toolbar").forEach(setupToolbar);
+                ctx.watch(".mde-toolbar", toolbars => toolbars.forEach(setupToolbar), { debounce: 120 });
+                document.addEventListener("paste", event => {
+                    if (!event.target?.closest?.(".CodeMirror,.md-editor")) return;
+                    const files = imageFiles(event.clipboardData?.items || event.clipboardData?.files);
+                    if (!files.length) return;
+                    event.preventDefault();
+                    uploadFiles(files, activeEditor(event.target));
+                }, true);
+                document.addEventListener("dragover", event => {
+                    if (event.target?.closest?.(".CodeMirror")) event.preventDefault();
+                });
+                document.addEventListener("drop", event => {
+                    if (!event.target?.closest?.(".CodeMirror")) return;
+                    const files = imageFiles(event.dataTransfer?.files);
+                    if (!files.length) return;
+                    event.preventDefault();
+                    uploadFiles(files, activeEditor(event.target));
+                });
+            }
+        };
+        define(externalImageUpload);
 
         /* ==========================================================================
            [ 🧭 辅助工具 ] - 新标签页打开链接修复

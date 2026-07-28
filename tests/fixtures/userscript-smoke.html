@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="icon" href="data:,">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; style-src 'self' 'unsafe-inline' data:; script-src 'self' 'unsafe-inline'; img-src 'self' data:">
+  <title>Nodeseek Max-iSen smoke fixture</title>
+  <script>
+    window.__menuCommands = [];
+    const gmStore = new Map([["settings", {
+      rules_compliance: { enabled: true },
+      link_purifier: { enabled: true, resolve_short: false, mark_external: true, force_blank: true },
+      image_upload: { enabled: false }
+    }]]);
+    window.GM_info = { script: { name: "Nodeseek Max-iSen", version: "test" } };
+    window.GM_getValue = (key, fallback) => gmStore.has(key) ? gmStore.get(key) : fallback;
+    window.GM_setValue = (key, value) => gmStore.set(key, value);
+    window.GM_deleteValue = key => gmStore.delete(key);
+    window.GM_registerMenuCommand = (label, callback) => { window.__menuCommands.push({ label, callback }); return window.__menuCommands.length; };
+    window.GM_unregisterMenuCommand = () => {};
+    window.GM_getResourceURL = () => "data:text/css,";
+    window.GM_openInTab = () => {};
+    window.GM_notification = () => {};
+    window.GM_xmlhttpRequest = options => options.onerror?.(new Error("network disabled in fixture"));
+    window.GM_addStyle = css => { const style = document.createElement("style"); style.textContent = css; document.head.appendChild(style); return style; };
+    window.GM_addElement = (parent, tag, attrs) => { const element = document.createElement(tag); Object.assign(element, attrs || {}); parent.appendChild(element); return element; };
+    window.unsafeWindow = window;
+    window.__config__ = { user: { member_id: 123, member_name: "Fixture User", nComment: 0 } };
+    window.layui = {
+      device: () => ({ mobile: false }),
+      use: (_modules, callback) => callback?.(),
+      form: { render: () => {}, on: () => {} },
+      colorpicker: { render: () => {} },
+      layer: {
+        msg: () => 1,
+        style: () => {},
+        close: () => {},
+        closeAll: () => {},
+        tips: () => {},
+        alert(content, options) {
+          const output = document.createElement("output");
+          output.id = "fixture-alert";
+          output.textContent = `${options?.title || "提示"}: ${content}`;
+          document.body.appendChild(output);
+        },
+        confirm: () => {},
+        open(options) {
+          const shell = document.createElement("section");
+          shell.id = "fixture-layer";
+          if (typeof options.content === "string") shell.innerHTML = options.content;
+          else if (options.content) shell.appendChild(options.content);
+          document.body.appendChild(shell);
+          options.success?.([shell]);
+          return 1;
+        }
+      }
+    };
+  </script>
+</head>
+<body>
+  <main>
+    <article class="post-content">
+      <a id="tracked-link" href="https://example.com/path?utm_source=forum&amp;keep=1">外部链接</a>
+      <a id="jump-link">论坛跳板</a>
+    </article>
+    <button id="open-settings" type="button">打开高级设置</button>
+  </main>
+  <script>
+    document.getElementById("jump-link").href = `${location.origin}/jump?to=${encodeURIComponent("https://example.org/target?utm_campaign=test&ok=1")}`;
+    document.getElementById("open-settings").addEventListener("click", () => {
+      window.__menuCommands.find(command => command.label.includes("高级设置"))?.callback();
+    });
+  </script>
+  <script src="/Nodeseek%20Pro.user.js"></script>
+</body>
+</html>
